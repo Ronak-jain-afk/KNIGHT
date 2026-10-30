@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
@@ -144,6 +145,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Mount static web UI at root (after API routers)
     web_dir = Path(__file__).parent / "web"
     if web_dir.exists():
+        favicon_path = web_dir / "favicon.svg"
+        if favicon_path.exists():
+            @application.get("/favicon.ico", include_in_schema=False)
+            async def favicon_ico() -> FileResponse:
+                return FileResponse(favicon_path, media_type="image/svg+xml")
+
         application.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
 
     return application

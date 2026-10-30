@@ -13,6 +13,7 @@ async def test_web_ui_serves_html():
         resp = await client.get("/")
         assert resp.status_code == 200
         assert "<title>Knight - Local AI Assistant</title>" in resp.text
+        assert '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' in resp.text
         assert 'data-theme="dark"' in resp.text
         assert 'src="/theme-bootstrap.js"' in resp.text
         assert 'src="/app.js"' in resp.text
@@ -59,6 +60,19 @@ async def test_web_ui_serves_html():
         # 2. Security headers (CSP, etc.) and stylesheet
         assert "Content-Security-Policy" in resp.headers
         assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+
+        # 2b. Favicon endpoints (/favicon.svg and /favicon.ico)
+        resp_svg = await client.get("/favicon.svg")
+        assert resp_svg.status_code == 200
+        assert "image/svg+xml" in resp_svg.headers["content-type"]
+        assert "<svg" in resp_svg.text
+        assert "M19 21H5" in resp_svg.text
+
+        resp_ico = await client.get("/favicon.ico")
+        assert resp_ico.status_code == 200
+        assert "image/svg+xml" in resp_ico.headers["content-type"]
+        assert "<svg" in resp_ico.text
+
         resp_css = await client.get("/styles.css")
         assert resp_css.status_code == 200
         assert "--font-sans" in resp_css.text
