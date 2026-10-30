@@ -1,0 +1,72 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & build artifacts
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Database and SQLite persistence files
+data/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Planning, specification, and audit documents
+plan.md
+FINDINGS.md
+AGENTS.md
+
+# Large model weights and download caches
+*.gguf
+*.part
+*.bin
+*.safetensors
+*.onnx
+models/
+vendor/llama/
+vendor/bin/
+
+# Image files, mockups, and screenshots
+ref.png
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.ico
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Testing, linting, and coverage caches
+.pytest_cache/
+.ruff_cache/
+.playwright-mcp/
+htmlcov/
+.coverage
+.coverage.*
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

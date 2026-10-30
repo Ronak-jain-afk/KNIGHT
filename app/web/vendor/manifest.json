@@ -1,0 +1,12 @@
+{
+  "marked.min.js": {
+    "version": "15.0.7",
+    "sha256": "934e3e36e9e2da0afb1a6e75075bb0f09af05293a844e84a7477ef40911c349a",
+    "sri": "sha256-k04+Nuni2gr7Gm51B1uw8JrwUpOoROhKdHfvQJEcNJo="
+  },
+  "purify.min.js": {
+    "version": "3.2.4",
+    "sha256": "8eb41b658831fab175fad9bcd00fcb2d84e0ed3a25a55053d4ecd4444b8b43a0",
+    "sri": "sha256-jrQbZYgx+rF1+tm80A/LLYTg7TolpVBT1OzUREuLQ6A="
+  }
+}
