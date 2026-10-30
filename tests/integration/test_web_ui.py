@@ -52,6 +52,9 @@ async def test_web_ui_serves_html():
         assert "inchat-search-toggle-btn" in resp.text
         assert "slash-commands-menu" in resp.text
         assert "sound-effects-toggle" in resp.text
+        assert "settings-clear-memories-btn" in resp.text
+        assert "clear-all-memories-btn" in resp.text
+        assert "settings-memory-count-badge" in resp.text
 
         # 2. Security headers (CSP, etc.) and stylesheet
         assert "Content-Security-Policy" in resp.headers
@@ -69,6 +72,8 @@ async def test_web_ui_serves_html():
         assert ".slash-commands-menu" in resp_css.text
         assert ".msg-telemetry-badge" in resp_css.text
         assert ".code-card-header" in resp_css.text
+        assert ".btn-danger-outline" in resp_css.text
+        assert ".settings-memory-card" in resp_css.text
 
         # 3. JavaScript app
         resp_js = await client.get("/app.js")
@@ -84,6 +89,8 @@ async def test_web_ui_serves_html():
         assert "performInChatSearch" in resp_js.text
         assert "SoundEffects" in resp_js.text
         assert "togglePinConversation" in resp_js.text
+        assert "clearAllMemories" in resp_js.text
+        assert "updateSettingsMemoryCount" in resp_js.text
         assert 'String(val ?? "")' in resp_js.text
 
         # Frontend contracts (U-01 through U-07)

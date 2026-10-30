@@ -117,6 +117,13 @@ async def delete_memory(db_path: Path, memory_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+async def clear_all_memories(db_path: Path) -> int:
+    async with get_db_connection(db_path) as db:
+        cursor = await db.execute("DELETE FROM memories")
+        await db.commit()
+        return cursor.rowcount
+
+
 async def update_memory(
     db_path: Path,
     memory_id: str,

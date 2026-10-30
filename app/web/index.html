@@ -351,7 +351,10 @@
 
       <!-- Search & Category Filters -->
       <div class="memories-toolbar">
-        <input type="search" id="memory-search-input" class="search-input" placeholder="Search saved memories..." aria-label="Search memories">
+        <div class="memories-toolbar-top">
+          <input type="search" id="memory-search-input" class="search-input" placeholder="Search saved memories..." aria-label="Search memories">
+          <button type="button" id="clear-all-memories-btn" class="btn btn-danger-outline btn-sm" title="Clear all memories">Clear All</button>
+        </div>
         <div class="filter-pills" id="memory-filter-pills">
           <button type="button" class="pill-btn active" data-kind="all">All</button>
           <button type="button" class="pill-btn" data-kind="fact">Facts</button>
@@ -614,6 +617,26 @@
           </div>
           <div class="form-group" style="margin-top: 8px;">
             <textarea id="custom-system-prompt" class="input text-input" rows="3" placeholder="e.g. Always answer concisely with code examples in Python. You are an expert engineer." maxlength="4000"></textarea>
+          </div>
+        </div>
+
+        <!-- Long-term Memory & Knowledge -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <span class="settings-section-title">Long-term Memory & Knowledge</span>
+            <span class="form-hint">Durable facts, preferences, and background knowledge remembered across sessions</span>
+          </div>
+          <div class="settings-memory-card">
+            <div class="memory-settings-row">
+              <div class="memory-settings-info">
+                <span id="settings-memory-count-badge" class="memory-count-badge">Checking memories...</span>
+                <span class="form-hint">Memories are used automatically by the agent to personalize responses and recall context.</span>
+              </div>
+              <div class="memory-settings-actions">
+                <button type="button" id="settings-open-memories-btn" class="btn btn-outline btn-sm">Manage Memories</button>
+                <button type="button" id="settings-clear-memories-btn" class="btn btn-danger-outline btn-sm">Clear All Memory</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -74,6 +74,7 @@ const attachmentsTray = document.getElementById("attachments-tray");
 const memoriesDialog = document.getElementById("memories-dialog");
 const openMemoriesBtn = document.getElementById("open-memories-btn");
 const closeMemoriesBtn = document.getElementById("close-memories-btn");
+const clearAllMemoriesBtn = document.getElementById("clear-all-memories-btn");
 const addMemoryForm = document.getElementById("add-memory-form");
 const newMemoryText = document.getElementById("new-memory-text");
 const newMemoryKind = document.getElementById("new-memory-kind");
@@ -115,6 +116,9 @@ const settingsSummaryBadge = document.getElementById("settings-summary-badge");
 const settingsActiveModelName = document.getElementById("settings-active-model-name");
 const presetsChipBar = document.getElementById("presets-chip-bar");
 const resetSettingsBtn = document.getElementById("reset-settings-btn");
+const settingsMemoryCountBadge = document.getElementById("settings-memory-count-badge");
+const settingsOpenMemoriesBtn = document.getElementById("settings-open-memories-btn");
+const settingsClearMemoriesBtn = document.getElementById("settings-clear-memories-btn");
 
 // Shortcuts Dialog
 const shortcutsDialog = document.getElementById("shortcuts-dialog");
@@ -459,6 +463,7 @@ function initSettings() {
     soundEffectsToggle.checked = localStorage.getItem("knight-sound-effects") !== "false";
   }
   checkASRStatus();
+  updateSettingsMemoryCount();
 }
 
 function openSettings() {
@@ -2563,6 +2568,7 @@ async function loadMemories() {
     if (!res.ok) throw new Error("Failed to load");
     allLoadedMemories = await res.json();
     filterAndRenderMemories();
+    updateMemoryCountBadges(allLoadedMemories.length);
   } catch (err) {
     memoriesList.innerHTML = `<div class="error-state" style="padding:16px;color:var(--danger-primary)">Error loading memories.</div>`;
   }
@@ -2660,6 +2666,7 @@ function renderMemoriesList(items) {
         if (res.ok) {
           card.remove();
           allLoadedMemories = allLoadedMemories.filter((item) => item.id !== m.id);
+          updateMemoryCountBadges(allLoadedMemories.length);
         }
       } catch (err) {
         alert("Failed to delete memory.");
@@ -2745,6 +2752,77 @@ addMemoryForm.addEventListener("submit", async (e) => {
     memoryFormFeedback.textContent = err.message;
   }
 });
+
+function updateMemoryCountBadges(count) {
+  if (settingsMemoryCountBadge) {
+    settingsMemoryCountBadge.textContent = `${count} ${count === 1 ? "memory" : "memories"} stored`;
+  }
+  if (settingsClearMemoriesBtn) {
+    settingsClearMemoriesBtn.disabled = count === 0;
+  }
+  if (clearAllMemoriesBtn) {
+    clearAllMemoriesBtn.disabled = count === 0;
+  }
+}
+
+async function updateSettingsMemoryCount() {
+  if (!settingsMemoryCountBadge && !clearAllMemoriesBtn && !settingsClearMemoriesBtn) return;
+  try {
+    const res = await apiFetch("/api/memories?limit=1000");
+    if (!res.ok) throw new Error("Failed to load");
+    const items = await res.json();
+    const count = Array.isArray(items) ? items.length : 0;
+    updateMemoryCountBadges(count);
+  } catch (err) {
+    if (settingsMemoryCountBadge) {
+      settingsMemoryCountBadge.textContent = "Memory active";
+    }
+  }
+}
+
+async function clearAllMemories() {
+  const confirmed = await showConfirmDialog({
+    title: "Clear All Memories",
+    message: "Are you sure you want to permanently clear all stored long-term memories? This removes all personalized facts, preferences, and background knowledge across conversations.",
+    itemTitle: "All Long-term Memories",
+    confirmText: "Clear All",
+    cancelText: "Cancel",
+    subtext: "This action cannot be undone.",
+    isDanger: true,
+  });
+  if (!confirmed) return;
+
+  try {
+    const res = await apiFetch("/api/memories", { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to clear memories");
+    }
+    const data = await res.json();
+    const count = data.deleted_count || 0;
+    allLoadedMemories = [];
+    filterAndRenderMemories();
+    updateMemoryCountBadges(0);
+    showToast(`Cleared ${count} ${count === 1 ? "memory" : "memories"}`);
+  } catch (err) {
+    showToast("Error clearing memories: " + err.message, true);
+  }
+}
+
+if (clearAllMemoriesBtn) {
+  clearAllMemoriesBtn.addEventListener("click", clearAllMemories);
+}
+
+if (settingsClearMemoriesBtn) {
+  settingsClearMemoriesBtn.addEventListener("click", clearAllMemories);
+}
+
+if (settingsOpenMemoriesBtn) {
+  settingsOpenMemoriesBtn.addEventListener("click", () => {
+    if (settingsDialog.open) settingsDialog.close();
+    openMemories();
+  });
+}
 
 // ============================================================
 // Event Listeners, Keyboard Shortcuts & Auto-resize

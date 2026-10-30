@@ -105,6 +105,27 @@ async def test_api_memories_crud():
         assert resp6.status_code == 200
         assert len(resp6.json()) == 0
 
+        # 7. Add multiple memories and clear all
+        await client.post("/api/memories", json={"text": "First test fact.", "kind": "fact"})
+        await client.post("/api/memories", json={"text": "Second test fact.", "kind": "fact"})
+        resp_list_before = await client.get("/api/memories")
+        assert len(resp_list_before.json()) == 2
+
+        resp_clear = await client.delete("/api/memories")
+        assert resp_clear.status_code == 200
+        assert resp_clear.json()["ok"] is True
+        assert resp_clear.json()["deleted_count"] == 2
+
+        resp_list_after = await client.get("/api/memories")
+        assert len(resp_list_after.json()) == 0
+
+        # Test POST /api/memories/clear fallback alias
+        await client.post("/api/memories", json={"text": "Third test fact.", "kind": "fact"})
+        resp_clear_post = await client.post("/api/memories/clear")
+        assert resp_clear_post.status_code == 200
+        assert resp_clear_post.json()["deleted_count"] == 1
+        assert len((await client.get("/api/memories")).json()) == 0
+
 
 @pytest.mark.asyncio
 async def test_remember_and_recall_tools():

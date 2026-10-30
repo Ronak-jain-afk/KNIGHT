@@ -1,5 +1,7 @@
 # Knight: Local-First AI Agent
 
+> **KNIGHT**: **K**nowledge **N**avigation, **I**ntelligence, **G**uidance & **H**elpful **T**ools
+
 Knight is a single-user, local-first artificial intelligence assistant that runs entirely on your local machine. It combines a FastAPI backend, a zero-build vanilla web interface, and an accelerated llama.cpp server for local open-weights language models.
 
 The system requires no external cloud subscriptions, sends no telemetry, and operates strictly over loopback interfaces.

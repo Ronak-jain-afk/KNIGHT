@@ -1396,6 +1396,23 @@ body {
 }
 .btn-danger:hover { background-color: var(--danger-hover); }
 
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid var(--danger-primary);
+  color: var(--danger-primary);
+  transition: all 0.15s ease;
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--danger-primary);
+  color: #ffffff;
+}
+.btn-danger-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
@@ -1704,6 +1721,14 @@ body {
 /* Memory Filter Toolbar & Category Pills */
 .memories-toolbar {
   margin-bottom: 12px;
+}
+.memories-toolbar-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.memories-toolbar-top .search-input {
+  flex: 1;
 }
 .filter-pills {
   display: flex;
@@ -2659,6 +2684,49 @@ kbd {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Long-term Memory Settings Card */
+.settings-memory-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+
+.memory-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.memory-settings-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.memory-count-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-surface);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+
+.memory-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* ============================================================

@@ -269,6 +269,17 @@ class MemoryRepository:
                 self._rebuild_matrix()
             return deleted
 
+    async def clear_memories(self) -> int:
+        if not self._initialized:
+            await self.initialize()
+
+        async with self._lock:
+            count = await db_memories.clear_all_memories(self.settings.app_db_path)
+            self._items.clear()
+            self._matrix = None
+            self._matrix_ids = []
+            return count
+
     async def update_memory(
         self,
         memory_id: str,

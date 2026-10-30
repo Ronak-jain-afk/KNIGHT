@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -88,6 +88,15 @@ async def reindex_memories(
 ) -> ReindexResponse:
     count = await repo.reindex()
     return ReindexResponse(reindexed_count=count)
+
+
+@router.delete("", response_model=dict)
+@router.post("/clear", response_model=dict)
+async def clear_all_memories(
+    repo: Annotated[MemoryRepository, Depends(get_memory_repo_dep)],
+) -> dict[str, Any]:
+    count = await repo.clear_memories()
+    return {"ok": True, "deleted_count": count}
 
 
 @router.delete("/{memory_id}", response_model=dict)
