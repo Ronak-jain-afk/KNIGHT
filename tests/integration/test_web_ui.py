@@ -56,6 +56,8 @@ async def test_web_ui_serves_html():
         assert "settings-clear-memories-btn" in resp.text
         assert "clear-all-memories-btn" in resp.text
         assert "settings-memory-count-badge" in resp.text
+        assert "scroll-to-bottom-btn" in resp.text
+        assert "citation-preview-tooltip" in resp.text
 
         # 2. Security headers (CSP, etc.) and stylesheet
         assert "Content-Security-Policy" in resp.headers
@@ -88,6 +90,9 @@ async def test_web_ui_serves_html():
         assert ".code-card-header" in resp_css.text
         assert ".btn-danger-outline" in resp_css.text
         assert ".settings-memory-card" in resp_css.text
+        assert ".thinking-block" in resp_css.text
+        assert ".scroll-to-bottom-btn" in resp_css.text
+        assert ".citation-preview-tooltip" in resp_css.text
 
         # 3. JavaScript app
         resp_js = await client.get("/app.js")
@@ -105,6 +110,9 @@ async def test_web_ui_serves_html():
         assert "togglePinConversation" in resp_js.text
         assert "clearAllMemories" in resp_js.text
         assert "updateSettingsMemoryCount" in resp_js.text
+        assert "extractThinkingBlocks" in resp_js.text
+        assert "citationTooltip" in resp_js.text
+        assert "updateScrollButtonVisibility" in resp_js.text
         assert 'String(val ?? "")' in resp_js.text
 
         # Frontend contracts (U-01 through U-07)
@@ -116,7 +124,8 @@ async def test_web_ui_serves_html():
         assert "fit.label || fit.badge" in resp_js.text
         assert "Cannot cancel: missing task ID" in resp_js.text
         assert "BEFORE sanitization" in resp_js.text
-        assert 'ADD_ATTR: ["target", "rel", "class", "title"]' in resp_js.text
+        assert 'ADD_ATTR: ["target", "rel", "class", "title"' in resp_js.text
+        assert 'ADD_TAGS: ["details", "summary"]' in resp_js.text
 
         # 4. Vendored marked.min.js
         resp_marked = await client.get("/vendor/marked.min.js")
@@ -150,4 +159,39 @@ def test_web_ui_sends_authorization_on_every_api_call():
     assert "AUTH_TOKEN_KEY" in js
     assert "await fetch(" not in js
     assert js.count("await apiFetch(") >= 20
+
+
+def test_web_ui_pack1_reasoning_and_tooltips():
+    """Verify Pack 1 functions, regexes, and attributes in app.js, index.html, and styles.css."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    html = (root / "app" / "web" / "index.html").read_text(encoding="utf-8")
+    css = (root / "app" / "web" / "styles.css").read_text(encoding="utf-8")
+    js = (root / "app" / "web" / "app.js").read_text(encoding="utf-8")
+
+    # 1. Collapsible thinking accordion
+    assert "extractThinkingBlocks" in js
+    assert "<think>" in js
+    assert "</think>" in js
+    assert ".thinking-block" in css
+    assert ".thinking-live" in css
+    assert ".thinking-summary" in css
+    assert ".thinking-body" in css
+
+    # 2. Scroll to bottom button
+    assert 'id="scroll-to-bottom-btn"' in html
+    assert 'id="scroll-unread-badge"' in html
+    assert ".scroll-to-bottom-btn" in css
+    assert "updateScrollButtonVisibility" in js
+    assert "scrollToBottom(true)" in js
+
+    # 3. Citation hover preview tooltip
+    assert 'id="citation-preview-tooltip"' in html
+    assert 'id="citation-tooltip-idx"' in html
+    assert 'id="citation-tooltip-domain"' in html
+    assert ".citation-preview-tooltip" in css
+    assert 'data-domain="' in js
+    assert 'data-snippet="' in js
+    assert "activeCitationTarget" in js
 

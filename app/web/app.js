@@ -33,6 +33,13 @@ const messageInput = document.getElementById("message-input");
 const sendBtn = document.getElementById("send-btn");
 const stopBtn = document.getElementById("stop-btn");
 const themeToggleBtn = document.getElementById("theme-toggle-btn");
+const scrollToBottomBtn = document.getElementById("scroll-to-bottom-btn");
+const scrollUnreadBadge = document.getElementById("scroll-unread-badge");
+const citationTooltip = document.getElementById("citation-preview-tooltip");
+const citationTooltipIdx = document.getElementById("citation-tooltip-idx");
+const citationTooltipDomain = document.getElementById("citation-tooltip-domain");
+const citationTooltipTitle = document.getElementById("citation-tooltip-title");
+const citationTooltipSnippet = document.getElementById("citation-tooltip-snippet");
 
 // Feature 2: Model Switcher & Hardware HUD Elements
 const modelSelect = document.getElementById("model-select");
@@ -1805,16 +1812,78 @@ async function exportCurrentConversation(format = "markdown", includeSources = t
 // Markdown, Code Cards & Citation Rendering
 // ============================================================
 
+function extractThinkingBlocks(rawMarkdown) {
+  if (!rawMarkdown) return { thinking: null, main: "", isLive: false };
+
+  // Check for complete <think>...</think>
+  const closedRegex = /<think>([\s\S]*?)<\/think>/i;
+  const closedMatch = rawMarkdown.match(closedRegex);
+  if (closedMatch) {
+    const thinking = closedMatch[1].trim();
+    const main = rawMarkdown.replace(closedRegex, "").trim();
+    return { thinking, main, isLive: false };
+  }
+
+  // Check for open <think>... (streaming in progress)
+  const openRegex = /<think>([\s\S]*)$/i;
+  const openMatch = rawMarkdown.match(openRegex);
+  if (openMatch) {
+    const prefix = rawMarkdown.substring(0, openMatch.index).trim();
+    const thinking = openMatch[1].trim();
+    return { thinking, main: prefix, isLive: true };
+  }
+
+  return { thinking: null, main: rawMarkdown, isLive: false };
+}
+
 function sanitizeAndRenderMarkdown(rawMarkdown, sources = []) {
   if (!rawMarkdown) return "";
 
-  // 1. Parse markdown with marked.js
-  let html = "";
-  if (window.marked && typeof window.marked.parse === "function") {
-    html = window.marked.parse(rawMarkdown);
-  } else {
-    html = `<p>${escapeHTML(rawMarkdown)}</p>`;
+  const { thinking, main, isLive } = extractThinkingBlocks(rawMarkdown);
+
+  let thinkingHtml = "";
+  if (thinking !== null && thinking.length > 0) {
+    let parsedThinking = "";
+    if (window.marked && typeof window.marked.parse === "function") {
+      parsedThinking = window.marked.parse(thinking);
+    } else {
+      parsedThinking = `<p>${escapeHTML(thinking)}</p>`;
+    }
+
+    const openAttr = isLive ? " open" : "";
+    const statusText = isLive ? "Thinking..." : "Thought process";
+    const statusClass = isLive ? "thinking-live" : "thinking-done";
+
+    thinkingHtml = `
+      <details class="thinking-block ${statusClass}"${openAttr}>
+        <summary class="thinking-summary">
+          <div class="thinking-summary-left">
+            <svg class="thinking-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a8 8 0 0 0-8 8c0 3 2 5.5 4 7v3h8v-3c2-1.5 4-4 4-7a8 8 0 0 0-8-8z"></path>
+              <line x1="9" y1="22" x2="15" y2="22"></line>
+            </svg>
+            <span class="thinking-title">Thinking Process</span>
+          </div>
+          <span class="thinking-badge">${escapeHTML(statusText)}</span>
+        </summary>
+        <div class="thinking-body">
+          ${parsedThinking}
+        </div>
+      </details>
+    `;
   }
+
+  // 1. Parse main markdown with marked.js
+  let mainHtml = "";
+  if (main) {
+    if (window.marked && typeof window.marked.parse === "function") {
+      mainHtml = window.marked.parse(main);
+    } else {
+      mainHtml = `<p>${escapeHTML(main)}</p>`;
+    }
+  }
+
+  let html = thinkingHtml + mainHtml;
 
   // 2. Transform [n] citation markers into links BEFORE sanitization (U-07)
   // Building citations prior to sanitization ensures DOMPurify processes the complete
@@ -1829,8 +1898,13 @@ function sanitizeAndRenderMarkdown(rawMarkdown, sources = []) {
       const idx = parseInt(idxStr, 10);
       const s = sourceMap.get(idx);
       if (s && isValidHttpUrl(s.url)) {
-        const titleEscaped = escapeHTML(s.title || s.url);
-        return `<a href="${encodeURI(s.url)}" target="_blank" rel="noopener noreferrer" class="citation-link" title="${titleEscaped}">[${idx}]</a>`;
+        let domain = "";
+        try {
+          domain = new URL(s.url).hostname;
+        } catch (_) {}
+        const titleEscaped = escapeHTML(s.title || domain || s.url);
+        const snippetEscaped = escapeHTML(s.snippet || "");
+        return `<a href="${encodeURI(s.url)}" target="_blank" rel="noopener noreferrer" class="citation-link" data-idx="${idx}" data-domain="${escapeHTML(domain)}" data-title="${titleEscaped}" data-snippet="${snippetEscaped}" title="${titleEscaped}">[${idx}]</a>`;
       }
       return match;
     });
@@ -1840,7 +1914,8 @@ function sanitizeAndRenderMarkdown(rawMarkdown, sources = []) {
   if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
     html = window.DOMPurify.sanitize(html, {
       USE_PROFILES: { html: true },
-      ADD_ATTR: ["target", "rel", "class", "title"],
+      ADD_TAGS: ["details", "summary"],
+      ADD_ATTR: ["target", "rel", "class", "title", "open", "data-idx", "data-domain", "data-title", "data-snippet"],
     });
   }
 
@@ -2325,13 +2400,34 @@ async function sendMessage(text) {
             firstTokenTime = performance.now();
           }
           accumulatedText += data.text || "";
+
+          // Preserve user-toggled open/close state on thinking accordion if present
+          const existingThink = streamElements.liveContent.querySelector(".thinking-block");
+          const wasOpen = existingThink ? existingThink.open : null;
+
           streamElements.liveContent.innerHTML = sanitizeAndRenderMarkdown(
             accumulatedText,
             currentSources
           );
-          if (autoScroll) scrollToBottom(false);
+
+          if (wasOpen !== null) {
+            const newThink = streamElements.liveContent.querySelector(".thinking-block");
+            if (newThink) newThink.open = wasOpen;
+          }
+
+          if (autoScroll) {
+            scrollToBottom(false);
+          } else {
+            notifyUnreadUpdate();
+          }
         } else if (eventType === "tool_start") {
           renderToolStart(streamElements.toolChipsContainer, data);
+          if (autoScroll) {
+            scrollToBottom(false);
+          } else {
+            notifyUnreadUpdate();
+          }
+        }
         } else if (eventType === "tool_end") {
           renderToolEnd(streamElements.toolChipsContainer, data);
         } else if (eventType === "sources") {
@@ -2526,6 +2622,8 @@ function setStreamingState(isStreaming) {
   }
 }
 
+let unreadUpdatesCount = 0;
+
 function scrollToBottom(force = false) {
   const threshold = 80;
   const isNearBottom =
@@ -2536,6 +2634,36 @@ function scrollToBottom(force = false) {
 
   if (force || isNearBottom) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    resetUnreadScrollBadge();
+  }
+}
+
+function updateScrollButtonVisibility() {
+  if (!messagesContainer || !scrollToBottomBtn) return;
+  const distanceFromBottom =
+    messagesContainer.scrollHeight -
+    messagesContainer.scrollTop -
+    messagesContainer.clientHeight;
+
+  if (distanceFromBottom > 120) {
+    scrollToBottomBtn.classList.remove("hidden");
+  } else {
+    scrollToBottomBtn.classList.add("hidden");
+    resetUnreadScrollBadge();
+  }
+}
+
+function resetUnreadScrollBadge() {
+  unreadUpdatesCount = 0;
+  if (scrollUnreadBadge) {
+    scrollUnreadBadge.classList.add("hidden");
+  }
+}
+
+function notifyUnreadUpdate() {
+  unreadUpdatesCount++;
+  if (scrollUnreadBadge) {
+    scrollUnreadBadge.classList.remove("hidden");
   }
 }
 
@@ -2546,7 +2674,64 @@ messagesContainer.addEventListener("scroll", () => {
       messagesContainer.scrollTop -
       messagesContainer.clientHeight <=
     threshold;
+  updateScrollButtonVisibility();
 });
+
+if (scrollToBottomBtn) {
+  scrollToBottomBtn.addEventListener("click", () => {
+    scrollToBottom(true);
+    scrollToBottomBtn.classList.add("hidden");
+  });
+}
+
+// Citation Hover Preview Tooltip
+let activeCitationTarget = null;
+
+if (messagesContainer && citationTooltip) {
+  messagesContainer.addEventListener("mouseover", (e) => {
+    const link = e.target.closest(".citation-link");
+    if (!link || link === activeCitationTarget) return;
+
+    activeCitationTarget = link;
+    const idx = link.dataset.idx || "";
+    const domain = link.dataset.domain || "";
+    const title = link.dataset.title || "";
+    const snippet = link.dataset.snippet || "";
+
+    if (!title && !domain && !snippet) return;
+
+    if (citationTooltipIdx) citationTooltipIdx.textContent = `[${idx}]`;
+    if (citationTooltipDomain) citationTooltipDomain.textContent = domain;
+    if (citationTooltipTitle) citationTooltipTitle.textContent = title;
+    if (citationTooltipSnippet) {
+      citationTooltipSnippet.textContent = snippet;
+      citationTooltipSnippet.style.display = snippet ? "block" : "none";
+    }
+
+    const rect = link.getBoundingClientRect();
+    const tooltipWidth = 320;
+    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+    if (left < 16) left = 16;
+    if (left + tooltipWidth > window.innerWidth - 16) {
+      left = window.innerWidth - tooltipWidth - 16;
+    }
+
+    let top = rect.top - 8;
+    citationTooltip.style.left = `${Math.round(left)}px`;
+    citationTooltip.style.top = `${Math.round(top)}px`;
+    citationTooltip.style.transform = "translateY(-100%)";
+    citationTooltip.classList.remove("hidden");
+  });
+
+  messagesContainer.addEventListener("mouseout", (e) => {
+    const link = e.target.closest(".citation-link");
+    if (!link) return;
+    if (activeCitationTarget === link) {
+      activeCitationTarget = null;
+      if (citationTooltip) citationTooltip.classList.add("hidden");
+    }
+  });
+}
 
 // ============================================================
 // Memories Drawer, Search, Filtering & In-Place Edit
