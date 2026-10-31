@@ -163,12 +163,14 @@ async def get_hardware_status(settings: Settings) -> dict[str, Any]:
     except (httpx.HTTPError, OSError):
         pass
 
+    from app.llm.manager import ModelManager
+
     return {
         "gpu": gpu,
         "ram": ram,
         "context": {
             "max_tokens": settings.context_tokens,
-            "model_name": settings.model_name,
+            "model_name": ModelManager.get_active_model(settings),
         },
         "server": server_status,
     }

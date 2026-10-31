@@ -28,6 +28,7 @@ from app.config import Settings, get_settings
 from app.db.cache import purge_expired_cache_loop
 from app.db.sqlite import close_db_pools, init_checkpoint_db, run_migrations
 from app.llm.client import get_chat_model
+from app.llm.manager import ModelManager
 from app.logging_setup import setup_logging
 from app.memory.repository import get_memory_repository
 from app.security.middleware import (
@@ -103,7 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.checkpointer = checkpointer
         app.state.agent = agent
-        app.state.active_model = settings.model_name
+        app.state.active_model = ModelManager.get_active_model(settings)
         app.state.asr_service = ASRService(settings)
 
         try:

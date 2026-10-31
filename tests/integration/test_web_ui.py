@@ -195,3 +195,23 @@ def test_web_ui_pack1_reasoning_and_tooltips():
     assert 'data-snippet="' in js
     assert "activeCitationTarget" in js
 
+
+def test_javascript_syntax_validity():
+    """Verify that all client-side JavaScript files have valid syntax."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node_bin = shutil.which("node")
+    if not node_bin:
+        pytest.skip("Node.js not installed in environment")
+    root = Path(__file__).resolve().parent.parent.parent
+    for js_file in (root / "app" / "web").glob("*.js"):
+        res = subprocess.run(
+            [node_bin, "-c", str(js_file)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert res.returncode == 0, f"Syntax error in {js_file.name}: {res.stderr}"
+

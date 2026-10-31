@@ -42,9 +42,26 @@ class EmbeddingService:
         return await asyncio.to_thread(self._sync_load)
 
     def _sync_load(self) -> bool:
+        # Pre-check whether local weights exist in cache_dir before invoking FastEmbed.
+        # Calling TextEmbedding(..., local_files_only=True) when cache is empty causes
+        # FastEmbed's internal loguru logger to print alarming ERROR traces directly to stderr.
+        has_local_weights = self.cache_dir.is_dir() and any(
+            f.is_file() and (f.suffix in {".onnx", ".tar.gz", ".bin", ".json"})
+            for f in self.cache_dir.rglob("*")
+        )
+        if not has_local_weights:
+            logger.info(
+                "FastEmbed embedding model '%s' not cached in %s. Using keyword search for memory retrieval.",
+                self.model_name,
+                self.cache_dir,
+            )
+            self._model = None
+            self._available = False
+            return False
+
         try:
             logger.info(
-                "Checking FastEmbed model '%s' in %s (local files only)...",
+                "Loading FastEmbed embedding model '%s' from %s (local files only)...",
                 self.model_name,
                 self.cache_dir,
             )
@@ -60,7 +77,7 @@ class EmbeddingService:
             return True
         except (RuntimeError, ValueError, OSError, TimeoutError) as exc:
             logger.info(
-                "FastEmbed model '%s' is not available locally (%s). Falling back to keyword search.",
+                "FastEmbed model '%s' could not be loaded (%s). Falling back to keyword search.",
                 self.model_name,
                 exc,
             )

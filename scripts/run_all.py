@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import os
 import secrets
@@ -150,6 +151,12 @@ def main() -> None:
 
         api_env = os.environ.copy()
         api_env["KNIGHT_LLAMA_API_KEY"] = generated_api_key
+
+        from scripts.run_llama import find_model_file
+
+        with contextlib.suppress(FileNotFoundError):
+            loaded_model_file = find_model_file(settings.models_dir)
+            api_env["KNIGHT_MODEL_NAME"] = loaded_model_file.name
 
         api_cmd = [
             python_bin,

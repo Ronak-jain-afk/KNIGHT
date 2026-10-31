@@ -23,10 +23,29 @@ def main() -> None:
         default="data/models",
         help="Destination directory (default: data/models)",
     )
+    parser.add_argument(
+        "--fastembed",
+        action="store_true",
+        help="Also download the FastEmbed embedding model (BAAI/bge-small-en-v1.5) for semantic memory search",
+    )
     args = parser.parse_args()
 
     dest_dir = Path(args.dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.fastembed:
+        print("Downloading FastEmbed model 'BAAI/bge-small-en-v1.5'...")
+        from fastembed import TextEmbedding
+
+        fastembed_dir = dest_dir / "fastembed"
+        fastembed_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            _ = TextEmbedding(model_name="BAAI/bge-small-en-v1.5", cache_dir=str(fastembed_dir))
+            print(f"FastEmbed model downloaded and verified in: {fastembed_dir}")
+        except (OSError, RuntimeError, ValueError) as exc:
+            sys.exit(f"Failed to download FastEmbed model: {exc}")
+        return
+
     target_path = dest_dir / args.filename
 
     if target_path.exists() and target_path.stat().st_size > 100_000_000:

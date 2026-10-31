@@ -899,6 +899,7 @@ async function loadModels() {
       opt.textContent = activeModelName || "Default model";
       modelSelect.appendChild(opt);
     } else {
+      let hasSelected = false;
       for (const m of data.models) {
         const opt = document.createElement("option");
         opt.value = m.name;
@@ -906,12 +907,23 @@ async function loadModels() {
         if (m.is_active || m.name === activeModelName || m.stem === activeModelName) {
           opt.selected = true;
           activeModelName = m.name;
+          hasSelected = true;
         }
         modelSelect.appendChild(opt);
+      }
+      if (!hasSelected && data.models.length > 0) {
+        modelSelect.selectedIndex = 0;
+        activeModelName = data.models[0].name;
       }
     }
     if (modelBadge) {
       modelBadge.textContent = activeModelName || "qwen3.5-4b";
+    }
+    if (settingsActiveModelName) {
+      const activeText = modelSelect && modelSelect.options && modelSelect.selectedIndex >= 0
+        ? modelSelect.options[modelSelect.selectedIndex].text
+        : activeModelName || "Knight Local Model";
+      settingsActiveModelName.textContent = activeText;
     }
   } catch (err) {
     console.debug("Failed to load models list:", err);
@@ -2427,7 +2439,6 @@ async function sendMessage(text) {
           } else {
             notifyUnreadUpdate();
           }
-        }
         } else if (eventType === "tool_end") {
           renderToolEnd(streamElements.toolChipsContainer, data);
         } else if (eventType === "sources") {

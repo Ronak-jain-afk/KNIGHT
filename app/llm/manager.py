@@ -28,7 +28,7 @@ def list_gguf_models(settings: Settings, active_model: str | None = None) -> lis
     models_dir.mkdir(parents=True, exist_ok=True)
 
     gguf_files = sorted(models_dir.glob("*.gguf"))
-    current_active = active_model or settings.model_name
+    current_active = active_model or ModelManager.get_active_model(settings)
 
     models: list[dict[str, Any]] = []
     for f in gguf_files:
@@ -113,7 +113,30 @@ class ModelManager:
 
     @classmethod
     def get_active_model(cls, settings: Settings) -> str:
-        return cls._active_model or settings.model_name
+        if cls._active_model:
+            return cls._active_model
+
+        models_dir = settings.models_dir
+        if models_dir.exists():
+            # 1. Match settings.model_name explicitly against GGUF files in models_dir
+            for f in models_dir.glob("*.gguf"):
+                if f.name == settings.model_name or f.stem == settings.model_name:
+                    cls._active_model = f.name
+                    return cls._active_model
+
+            # 2. Check for default model file
+            default_path = models_dir / "Qwen3.5-4B-UD-Q4_K_XL.gguf"
+            if default_path.exists():
+                cls._active_model = default_path.name
+                return cls._active_model
+
+            # 3. Fallback to first available GGUF model in models_dir
+            ggufs = sorted(models_dir.glob("*.gguf"))
+            if ggufs:
+                cls._active_model = ggufs[0].name
+                return cls._active_model
+
+        return settings.model_name
 
     @classmethod
     async def switch_model(

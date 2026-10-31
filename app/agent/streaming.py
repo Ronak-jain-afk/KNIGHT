@@ -19,6 +19,7 @@ from app.agent.sources import SourceCollector, current_sources
 from app.config import Settings
 from app.db import runs, sources
 from app.llm.gate import inference_gate
+from app.llm.manager import ModelManager
 from app.logging_setup import current_run_id, current_thread_id
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ async def stream_agent_run(
     ]
 
     start_time = time.time()
-    active_model = model_name or settings.model_name
+    active_model = model_name or ModelManager.get_active_model(settings)
     await runs.start_run(settings.app_db_path, run_id, thread_id, active_model)
 
     if settings.log_prompts:
