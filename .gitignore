@@ -39,7 +39,6 @@ vendor/llama/
 vendor/bin/
 
 # Image files, mockups, and screenshots
-ref.png
 *.png
 *.jpg
 *.jpeg
