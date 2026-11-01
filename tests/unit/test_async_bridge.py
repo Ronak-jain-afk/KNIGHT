@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for C-01/C-02: one shared async bridge, no duplicate helpers."""
 
 import asyncio

@@ -1,8 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "knight"
 version = "0.1.0"
 description = "Local-first LangGraph agent with llama.cpp"
 requires-python = ">=3.12,<3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
   "fastapi==0.162.0",
   "uvicorn[standard]==0.54.0",

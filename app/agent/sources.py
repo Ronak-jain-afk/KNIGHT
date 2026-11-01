@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import contextvars
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse

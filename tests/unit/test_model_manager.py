@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for C-13/C-14/C-15/C-16: model swap safety and argv."""
 
 import platform

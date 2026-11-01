@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for M-07 (transactional migrations), M-08 (connection reuse),
 and M-15 (scheduled cache purge + row cap)."""
 

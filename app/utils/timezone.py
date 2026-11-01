@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Configured-timezone helpers shared by the prompt and datetime tool."""
 
 from __future__ import annotations

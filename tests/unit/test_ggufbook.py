@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from app.llm.ggufbook import evaluate_hardware_fit, extract_quant_type
 
 

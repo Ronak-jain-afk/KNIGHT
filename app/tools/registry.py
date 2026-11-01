@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from langchain_core.tools import BaseTool
 
 from app.tools.calculator import calculate

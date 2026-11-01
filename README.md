@@ -312,5 +312,26 @@ knight/
 |   |-- integration/       # End-to-end API, UI, and streaming tests
 |   `-- unit/              # Isolated tool, database, and security tests
 |-- pyproject.toml         # Project metadata and dependencies
+|-- LICENSE                # Apache-2.0 license text
+|-- NOTICE                 # Project attribution notice
+|-- THIRD_PARTY_NOTICES.md # Third-party component licenses
 `-- uv.lock                # Deterministic dependency lockfile
 ```
+
+---
+
+## License
+
+Knight is licensed under the [Apache License, Version 2.0](LICENSE).
+
+- [LICENSE](LICENSE) contains the full license text.
+- [NOTICE](NOTICE) contains the project attribution notice.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists third-party components and their licenses.
+
+Copyright 2026 Ronak Jain.
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.

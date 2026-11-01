@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for M-11 (Windows RAM telemetry) and M-12 (GPU cache race)."""
 
 import asyncio

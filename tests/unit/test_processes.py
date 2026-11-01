@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for C-11/C-12/C-17/C-18: process handling and key logging."""
 
 import shutil

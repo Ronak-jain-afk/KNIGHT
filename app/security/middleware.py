@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import secrets
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlparse

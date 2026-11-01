@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for C-07..C-10: GGUF download SSRF, redirect, size, magic."""
 
 import socket

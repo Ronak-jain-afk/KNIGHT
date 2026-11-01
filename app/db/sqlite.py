@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SQLite helpers: a small per-loop connection pool and transactional migrations."""
 
 from __future__ import annotations

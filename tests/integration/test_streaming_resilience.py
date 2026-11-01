@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for streaming resilience (C-03/C-04/C-05/C-06/C-19)."""
 
 import asyncio

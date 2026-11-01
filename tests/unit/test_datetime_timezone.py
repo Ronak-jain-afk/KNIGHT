@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """M-05/M-06: configured timezone labels and per-run date injection."""
 
 from datetime import datetime

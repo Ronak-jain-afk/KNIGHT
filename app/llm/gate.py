@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tracks in-flight inference so a model swap can drain instead of killing streams."""
 
 from __future__ import annotations

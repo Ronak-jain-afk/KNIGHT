@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Single shared event loop for synchronous LangChain tools.
 
 Sync tools (``@tool`` functions) are invoked by LangChain from worker threads via

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;

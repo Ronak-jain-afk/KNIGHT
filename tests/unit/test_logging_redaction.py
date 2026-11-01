@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for M-09/M-10: redaction of lazy args and exception text."""
 
 import logging

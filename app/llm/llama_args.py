@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Canonical llama-server launch arguments.
 
 Both ``scripts/run_llama.py`` and the in-app model swapper must build the exact

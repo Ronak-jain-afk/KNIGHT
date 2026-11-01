@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Vendor asset verification: check recorded versions and SHA-256 digests against manifest."""
 
 from __future__ import annotations

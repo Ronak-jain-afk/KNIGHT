@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for M-17..M-23: runner flags, key handling, cleanup,
 checksum verification, archive traversal and version parsing."""
 

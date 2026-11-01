@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Per-turn request context that must never be checkpointed.
 
 LangGraph persists graph *inputs* into thread state. Values that describe a single

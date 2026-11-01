@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import ipaddress
 from functools import lru_cache
 from pathlib import Path
