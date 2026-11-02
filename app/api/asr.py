@@ -88,8 +88,34 @@ async def transcribe_audio(
     audio_bytes: bytes = b""
     selected_lang = language
 
+    # Check Content-Length upfront before reading or parsing body (KN-07)
+    content_length_header = request.headers.get("content-length")
+    if content_length_header:
+        try:
+            cl = int(content_length_header)
+            if cl > MAX_AUDIO_BYTES + 65536:
+                return _error(
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    "audio_too_large",
+                    request_id,
+                    f"Audio file exceeds the {MAX_AUDIO_BYTES // 1024 // 1024} MB limit.",
+                )
+        except (ValueError, TypeError):
+            pass
+
     try:
+        body = await _read_capped_request(request, MAX_AUDIO_BYTES + 65536)
+        if body is None:
+            return _error(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "audio_too_large",
+                request_id,
+                f"Audio file exceeds the {MAX_AUDIO_BYTES // 1024 // 1024} MB limit.",
+            )
+
         if "multipart/form-data" in content_type:
+            # Replay the safely capped body for the multipart parser
+            request._body = body
             form = await request.form()
             file_item = form.get("file")
             if file_item is None or not hasattr(file_item, "read"):
@@ -103,14 +129,6 @@ async def transcribe_audio(
             if not selected_lang and "language" in form:
                 selected_lang = str(form.get("language"))
         else:
-            body = await _read_capped_request(request, MAX_AUDIO_BYTES)
-            if body is None:
-                return _error(
-                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    "audio_too_large",
-                    request_id,
-                    f"Audio file exceeds the {MAX_AUDIO_BYTES // 1024 // 1024} MB limit.",
-                )
             audio_bytes = body
     except Exception:
         logger.exception("Failed to read ASR request body (request_id=%s)", request_id)

@@ -160,3 +160,48 @@ async def test_upload_uses_configured_attachment_limit(monkeypatch):
     assert resp.status_code == 413
     assert "limit" in resp.json()["detail"].lower()
 
+
+@pytest.mark.asyncio
+async def test_document_create_and_upload_conflict():
+    """KN-13: duplicate document creation/upload raises 409 Conflict unless overwrite=True."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        # 1. Create document
+        resp1 = await client.post(
+            "/api/documents",
+            json={"filename": "doc.txt", "content": "hello v1"},
+        )
+        assert resp1.status_code == 201
+
+        # 2. Duplicate create fails with 409
+        resp2 = await client.post(
+            "/api/documents",
+            json={"filename": "doc.txt", "content": "hello v2"},
+        )
+        assert resp2.status_code == 409
+        assert "already exists" in resp2.json()["detail"]
+
+        # 3. Create with overwrite=True succeeds
+        resp3 = await client.post(
+            "/api/documents",
+            json={"filename": "doc.txt", "content": "hello v2", "overwrite": True},
+        )
+        assert resp3.status_code == 201
+
+        # 4. Duplicate upload fails with 409
+        resp4 = await client.post(
+            "/api/documents/upload?filename=doc.txt",
+            content=b"uploaded new content",
+        )
+        assert resp4.status_code == 409
+        assert "already exists" in resp4.json()["detail"]
+
+        # 5. Upload with overwrite=True succeeds
+        resp5 = await client.post(
+            "/api/documents/upload?filename=doc.txt&overwrite=true",
+            content=b"uploaded overwritten content",
+        )
+        assert resp5.status_code == 201
+
+

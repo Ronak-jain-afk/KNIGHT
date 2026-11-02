@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -28,6 +29,17 @@ logger = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = (
     "The agent could not complete this turn. Check the server logs for the request id."
 )
+
+@contextlib.asynccontextmanager
+async def _safe_aclosing(stream: Any) -> AsyncIterator[Any]:
+    """Ensure async generator stream is closed even when disconnected early (KN-06)."""
+    try:
+        yield stream
+    finally:
+        aclose = getattr(stream, "aclose", None)
+        if callable(aclose):
+            await aclose()
+
 
 # Strong references to fire-and-forget tasks so they are not garbage collected
 # mid-flight. Drained on shutdown (see app.main.lifespan).
@@ -116,16 +128,15 @@ async def stream_agent_run(
     ``finally`` under ``asyncio.shield`` so client disconnects/cancellation still
     leave the run row in a terminal status instead of ``running``.
     """
-    current_run_id.set(run_id)
-    current_thread_id.set(thread_id)
-
     collector = SourceCollector()
-    current_sources.set(collector)
-    loop_guard_state.set({"seen": set(), "count": 0})
 
     # Per-turn values live in context variables only; never in graph inputs, which
     # LangGraph checkpoints into thread state (see app/agent/run_context.py).
     context_tokens = [
+        (current_run_id, current_run_id.set(run_id)),
+        (current_thread_id, current_thread_id.set(thread_id)),
+        (current_sources, current_sources.set(collector)),
+        (loop_guard_state, loop_guard_state.set({"seen": set(), "count": 0})),
         (current_memories, current_memories.set(memories or [])),
         (
             current_system_prompt_override,
@@ -145,6 +156,7 @@ async def stream_agent_run(
         logger.info("Executing prompt [run=%s thread=%s]: %s", run_id, thread_id, user_message)
 
     tool_start_times: dict[str, float] = {}
+    tool_calls_count = 0
     last_assistant_id: str = f"msg_{run_id}"
     chunks_generated = 0
     completion_tokens: int | None = None
@@ -183,83 +195,85 @@ async def stream_agent_run(
             version="v2",
         )
 
-        async for event in stream_iter:
-            # v2 emits {"type", "ns", "data"}; keep the tuple fallback for
-            # lightweight test doubles that predate the v2 contract.
-            if isinstance(event, dict) and {"type", "data"} <= event.keys():
-                stream_mode = event["type"]
-                payload = event["data"]
-            else:
-                stream_mode, payload = event
+        async with _safe_aclosing(stream_iter):
+            async for event in stream_iter:
+                # v2 emits {"type", "ns", "data"}; keep the tuple fallback for
+                # lightweight test doubles that predate the v2 contract.
+                if isinstance(event, dict) and {"type", "data"} <= event.keys():
+                    stream_mode = event["type"]
+                    payload = event["data"]
+                else:
+                    stream_mode, payload = event
 
-            # Check for client disconnect
-            if http_request and await http_request.is_disconnected():
-                logger.info("Client disconnected during turn [thread=%s run=%s]", thread_id, run_id)
-                run_status = "cancelled"
-                break
+                # Check for client disconnect
+                if http_request and await http_request.is_disconnected():
+                    logger.info("Client disconnected during turn [thread=%s run=%s]", thread_id, run_id)
+                    run_status = "cancelled"
+                    break
 
-            if stream_mode == "messages":
-                chunk, metadata = payload
-                usage = getattr(chunk, "usage_metadata", None)
-                if isinstance(usage, dict):
-                    output = usage.get("output_tokens")
-                    input_count = usage.get("input_tokens")
-                    if isinstance(output, int):
-                        completion_tokens = output
-                    if isinstance(input_count, int):
-                        prompt_tokens = input_count
-                response_metadata = getattr(chunk, "response_metadata", None)
-                if isinstance(response_metadata, dict):
-                    token_usage = response_metadata.get("token_usage")
-                    if isinstance(token_usage, dict):
-                        output = token_usage.get("completion_tokens")
-                        input_count = token_usage.get("prompt_tokens")
+                if stream_mode == "messages":
+                    chunk, metadata = payload
+                    usage = getattr(chunk, "usage_metadata", None)
+                    if isinstance(usage, dict):
+                        output = usage.get("output_tokens")
+                        input_count = usage.get("input_tokens")
                         if isinstance(output, int):
                             completion_tokens = output
                         if isinstance(input_count, int):
                             prompt_tokens = input_count
+                    response_metadata = getattr(chunk, "response_metadata", None)
+                    if isinstance(response_metadata, dict):
+                        token_usage = response_metadata.get("token_usage")
+                        if isinstance(token_usage, dict):
+                            output = token_usage.get("completion_tokens")
+                            input_count = token_usage.get("prompt_tokens")
+                            if isinstance(output, int):
+                                completion_tokens = output
+                            if isinstance(input_count, int):
+                                prompt_tokens = input_count
 
-                if metadata.get("langgraph_node") == "model":
-                    text = getattr(chunk, "content", "")
-                    if text:
-                        chunks_generated += 1
-                        yield sse_event("token", {"text": text})
+                    if metadata.get("langgraph_node") == "model":
+                        text = getattr(chunk, "content", "")
+                        if text:
+                            chunks_generated += 1
+                            yield sse_event("token", {"text": text})
 
-            elif stream_mode == "updates":
-                if "model" in payload:
-                    for msg in payload["model"].get("messages", []):
-                        if getattr(msg, "id", None):
-                            last_assistant_id = msg.id
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                call_id = tc["id"]
-                                tool_start_times[call_id] = time.time()
+                elif stream_mode == "updates":
+                    if "model" in payload:
+                        for msg in payload["model"].get("messages", []):
+                            if getattr(msg, "id", None):
+                                last_assistant_id = msg.id
+                            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                for tc in msg.tool_calls:
+                                    call_id = tc["id"]
+                                    tool_calls_count += 1
+                                    tool_start_times[call_id] = time.time()
+                                    yield sse_event(
+                                        "tool_start",
+                                        {
+                                            "id": call_id,
+                                            "name": tc["name"],
+                                            "args": tc.get("args", {}),
+                                        },
+                                    )
+                    elif "tools" in payload:
+                        for msg in payload["tools"].get("messages", []):
+                            if isinstance(msg, ToolMessage):
+                                call_id = msg.tool_call_id
+                                st = tool_start_times.pop(call_id, time.time())
+                                duration_ms = int((time.time() - st) * 1000)
+                                ok = msg.status != "error"
+                                summary = str(msg.content)[:120]
                                 yield sse_event(
-                                    "tool_start",
+                                    "tool_end",
                                     {
                                         "id": call_id,
-                                        "name": tc["name"],
-                                        "args": tc.get("args", {}),
+                                        "name": msg.name or "tool",
+                                        "ok": ok,
+                                        "summary": summary,
+                                        "duration_ms": duration_ms,
                                     },
                                 )
-                elif "tools" in payload:
-                    for msg in payload["tools"].get("messages", []):
-                        if isinstance(msg, ToolMessage):
-                            call_id = msg.tool_call_id
-                            st = tool_start_times.pop(call_id, time.time())
-                            duration_ms = int((time.time() - st) * 1000)
-                            ok = msg.status != "error"
-                            summary = str(msg.content)[:120]
-                            yield sse_event(
-                                "tool_end",
-                                {
-                                    "id": call_id,
-                                    "name": msg.name or "tool",
-                                    "ok": ok,
-                                    "summary": summary,
-                                    "duration_ms": duration_ms,
-                                },
-                            )
 
         # Normal path only: no yields from finally, which would break on
         # GeneratorExit ("async generator ignored GeneratorExit").
@@ -316,6 +330,7 @@ async def stream_agent_run(
                     error_code=error_code,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
+                    tool_calls=tool_calls_count,
                     elapsed_ms=elapsed_ms,
                 )
                 if final_status == "ok" and settings.memory_auto_extract:

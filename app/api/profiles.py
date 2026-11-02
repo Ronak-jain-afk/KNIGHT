@@ -103,14 +103,15 @@ async def update_profile_endpoint(
             detail=f"Profile '{profile_id}' not found.",
         )
 
+    fields_set = req.model_fields_set
     updated = await profiles.update_profile(
         db_path=settings.app_db_path,
         profile_id=profile_id,
-        name=req.name.strip() if req.name else None,
-        icon=req.icon.strip() if req.icon else None,
-        description=req.description.strip() if req.description else None,
-        system_prompt=req.system_prompt.strip() if req.system_prompt else None,
-        mode=req.mode,
+        name=req.name.strip() if "name" in fields_set and req.name is not None else None,
+        icon=req.icon.strip() if "icon" in fields_set and req.icon is not None else None,
+        description=req.description.strip() if "description" in fields_set and req.description is not None else None,
+        system_prompt=req.system_prompt.strip() if "system_prompt" in fields_set and req.system_prompt is not None else None,
+        mode=req.mode if "mode" in fields_set else None,
     )
     if not updated:
         raise HTTPException(

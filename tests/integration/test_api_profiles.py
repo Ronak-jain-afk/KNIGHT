@@ -61,11 +61,12 @@ async def test_profiles_api_lifecycle():
         # 5. Patch custom profile
         patch_res = await client.patch(
             f"/api/profiles/{custom_id}",
-            json={"name": "Lead Technical Writer", "mode": "agent"},
+            json={"name": "Lead Technical Writer", "mode": "agent", "description": ""},
         )
         assert patch_res.status_code == 200
         assert patch_res.json()["name"] == "Lead Technical Writer"
         assert patch_res.json()["mode"] == "agent"
+        assert patch_res.json()["description"] == ""  # KN-15: explicit empty string clears description
 
         # 6. Delete custom profile
         del_res = await client.delete(f"/api/profiles/{custom_id}")

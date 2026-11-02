@@ -32,6 +32,7 @@ class _ConnectionPool:
         self.db_path = db_path
         self.max_size = max_size
         self._idle: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue()
+        self._waiters: list[asyncio.Future[aiosqlite.Connection]] = []
         self._size = 0
         self._closed = False
         self._lock = asyncio.Lock()
@@ -59,7 +60,30 @@ class _ConnectionPool:
                     db = await self._new_connection()
                     self._size += 1
                     return db
-        return await self._idle.get()
+            loop = asyncio.get_running_loop()
+            waiter: asyncio.Future[aiosqlite.Connection] = loop.create_future()
+            self._waiters.append(waiter)
+
+        try:
+            return await waiter
+        except BaseException:
+            async with self._lock:
+                if waiter in self._waiters:
+                    self._waiters.remove(waiter)
+                elif waiter.done() and not waiter.cancelled():
+                    try:
+                        db = waiter.result()
+                    except (sqlite3.Error, asyncio.CancelledError, RuntimeError):
+                        db = None
+                    if db is not None:
+                        if self._closed:
+                            try:
+                                await db.close()
+                            except sqlite3.Error:
+                                pass
+                        else:
+                            self._idle.put_nowait(db)
+            raise
 
     async def release(self, db: aiosqlite.Connection) -> None:
         """Return a connection, rolling back any caller-left transaction."""
@@ -69,17 +93,30 @@ class _ConnectionPool:
         except (sqlite3.Error, ValueError):
             logger.debug("Rollback failed while releasing pooled connection", exc_info=True)
 
-        if self._closed:
-            try:
-                await db.close()
-            except sqlite3.Error:  # pragma: no cover - best effort
-                pass
-            return
-        self._idle.put_nowait(db)
+        async with self._lock:
+            if self._closed:
+                try:
+                    await db.close()
+                except sqlite3.Error:  # pragma: no cover - best effort
+                    pass
+                return
+
+            while self._waiters:
+                waiter = self._waiters.pop(0)
+                if not waiter.done():
+                    waiter.set_result(db)
+                    return
+
+            self._idle.put_nowait(db)
 
     async def close(self) -> None:
         async with self._lock:
             self._closed = True
+            for waiter in self._waiters:
+                if not waiter.done():
+                    waiter.set_exception(RuntimeError("Database connection pool is closed"))
+            self._waiters.clear()
+
             while True:
                 try:
                     db = self._idle.get_nowait()

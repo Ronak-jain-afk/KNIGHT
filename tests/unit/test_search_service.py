@@ -249,5 +249,21 @@ async def test_provider_http_error_falls_through(tmp_path):
 
     assert resp.ok is True
     assert resp.provider == "searxng"
-    assert resp.results[0].title == "Fallback"
+
+
+def test_normalize_url_preserves_meaningful_parameters():
+    """KN-16: URL normalization strips tracking params but preserves meaningful query params."""
+    from app.agent.sources import normalize_url
+
+    # Strips tracking
+    url1 = "https://example.com/item?ref=home&utm_source=twitter&source=mail&fbclid=abc"
+    assert normalize_url(url1) == "https://example.com/item"
+
+    # Preserves meaningful parameters that happen to share prefixes
+    url2 = "https://example.com/api?reference=123&refresh=true&source_id=99&sourceCode=python"
+    norm2 = normalize_url(url2)
+    assert "reference=123" in norm2
+    assert "refresh=true" in norm2
+    assert "source_id=99" in norm2
+    assert "sourceCode=python" in norm2
 

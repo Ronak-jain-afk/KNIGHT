@@ -52,6 +52,11 @@ def web_search(
         or "ERROR: <reason>".
     """
     try:
+        max_results = max(1, min(10, int(max_results)))
+    except (ValueError, TypeError):
+        return "ERROR: invalid_argument: max_results must be an integer between 1 and 10."
+
+    try:
         return run_async(_web_search_async(query, max_results, freshness))
     except (RuntimeError, TimeoutError, OSError, ValueError) as exc:
         return f"ERROR: search_failed: {exc}"

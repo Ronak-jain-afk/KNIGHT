@@ -110,6 +110,16 @@ BLOCKED_SYSTEM_PREFIXES = (
     "/etc",
     "/boot",
     "/root",
+    "c:/windows",
+    "c:/winnt",
+    "c:/program files",
+    "c:/program files (x86)",
+    "c:/programdata",
+    "/mnt/c/windows",
+    "/mnt/c/winnt",
+    "/mnt/c/program files",
+    "/mnt/c/program files (x86)",
+    "/mnt/c/programdata",
 )
 
 BLOCKED_INTERNAL_PARTS = {
@@ -252,7 +262,7 @@ def list_directory(path: str = ".", max_items: int = 60) -> str:
         return f"ERROR: forbidden: {reason}"
 
     if not resolved.exists():
-        return f"ERROR: directory_not_found: Path '{path}' (resolved to '{resolved}') does not exist."
+        return f"ERROR: directory_not_found: Directory '{path}' does not exist."
 
     if resolved.is_file():
         return (
@@ -344,7 +354,7 @@ def read_local_file(path: str, offset_chars: int = 0, max_chars: int = 4000) -> 
         return f"ERROR: forbidden: {reason}"
 
     if not resolved.exists():
-        return f"ERROR: file_not_found: Path '{path}' (resolved to '{resolved}') does not exist on this system."
+        return f"ERROR: file_not_found: File '{path}' does not exist on this system."
 
     # If user/model passed a directory instead of a file, gracefully list directory!
     if resolved.is_dir():

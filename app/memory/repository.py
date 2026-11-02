@@ -348,6 +348,11 @@ class MemoryRepository:
         top_k: int = 6,
         min_score: float = 0.35,
     ) -> list[dict[str, Any]]:
+        try:
+            top_k = max(1, min(10, int(top_k)))
+        except (ValueError, TypeError):
+            top_k = 6
+
         if not self._initialized:
             await self.initialize()
 
@@ -359,6 +364,8 @@ class MemoryRepository:
             return []
 
         now = datetime.now(UTC)
+        results: list[dict[str, Any]] = []
+        selected_ids: set[str] = set()
 
         # 1. Vector similarity search if embeddings are available
         if self.embedding_service.is_available() and self._matrix is not None and len(self._matrix_ids) > 0:
@@ -388,17 +395,17 @@ class MemoryRepository:
 
                 # Sort by score descending
                 scored_candidates.sort(key=lambda x: x[0], reverse=True)
-                selected_ids = {c[1].id for c in scored_candidates[:top_k]}
-                results = [
-                    {
-                        "id": item.id,
-                        "text": item.text,
-                        "kind": item.kind,
-                        "importance": item.importance,
-                        "score": round(score, 3),
-                    }
-                    for score, item in scored_candidates[:top_k]
-                ]
+                for score, item in scored_candidates[:top_k]:
+                    selected_ids.add(item.id)
+                    results.append(
+                        {
+                            "id": item.id,
+                            "text": item.text,
+                            "kind": item.kind,
+                            "importance": item.importance,
+                            "score": round(score, 3),
+                        }
+                    )
 
                 # Critical memories (importance == 5, older than 7 days) must not starve
                 seven_days_ago = now - timedelta(days=7)
@@ -420,41 +427,47 @@ class MemoryRepository:
                         )
                         selected_ids.add(item.id)
 
-                return results[:top_k]
-
-        # 2. Keyword matching fallback
-        keyword_rows = await db_memories.search_memories_keyword(
-            self.settings.app_db_path, clean_query, limit=max(top_k * 3, top_k)
-        )
-        query_words = [w for w in re.findall(r"\w+", clean_query.lower()) if len(w) > 2]
-        if not query_words:
-            query_words = [w for w in re.findall(r"\w+", clean_query.lower()) if w]
-
-        scored_keyword: list[tuple[float, dict[str, Any]]] = []
-        for r in keyword_rows:
-            text_lower = r["text"].lower()
-            matched = sum(1 for word in query_words if word in text_lower)
-            lexical_score = matched / len(query_words) if query_words else 0.0
-            # Enforce the same relevance floor as the vector branch instead of
-            # assigning a fake importance-derived similarity (H-16).
-            if lexical_score < min_score:
-                continue
-            scored_keyword.append(
-                (
-                    lexical_score,
-                    {
-                        "id": r["id"],
-                        "text": r["text"],
-                        "kind": r["kind"],
-                        "importance": r["importance"],
-                        "score": round(lexical_score, 3),
-                        "score_kind": "lexical",
-                    },
-                )
+        # 2. Keyword matching fallback if vector search yielded fewer than top_k results
+        if len(results) < top_k:
+            remaining = top_k - len(results)
+            keyword_rows = await db_memories.search_memories_keyword(
+                self.settings.app_db_path, clean_query, limit=max(top_k * 3, top_k)
             )
+            query_words = [w for w in re.findall(r"\w+", clean_query.lower()) if len(w) > 2]
+            if not query_words:
+                query_words = [w for w in re.findall(r"\w+", clean_query.lower()) if w]
 
-        scored_keyword.sort(key=lambda pair: (pair[0], pair[1]["importance"]), reverse=True)
-        return [item for _, item in scored_keyword[:top_k]]
+            scored_keyword: list[tuple[float, dict[str, Any]]] = []
+            for r in keyword_rows:
+                if r["id"] in selected_ids:
+                    continue
+                text_lower = r["text"].lower()
+                matched = sum(1 for word in query_words if word in text_lower)
+                lexical_score = matched / len(query_words) if query_words else 0.0
+                # Enforce the same relevance floor as the vector branch instead of
+                # assigning a fake importance-derived similarity (H-16).
+                if lexical_score < min_score:
+                    continue
+                scored_keyword.append(
+                    (
+                        lexical_score,
+                        {
+                            "id": r["id"],
+                            "text": r["text"],
+                            "kind": r["kind"],
+                            "importance": r["importance"],
+                            "score": round(lexical_score, 3),
+                            "score_kind": "lexical",
+                        },
+                    )
+                )
+
+            scored_keyword.sort(key=lambda pair: (pair[0], pair[1]["importance"]), reverse=True)
+            for _, item in scored_keyword[:remaining]:
+                results.append(item)
+                selected_ids.add(item["id"])
+
+        return results[:top_k]
 
     async def record_usage(self, memory_ids: list[str]) -> None:
         if not memory_ids:

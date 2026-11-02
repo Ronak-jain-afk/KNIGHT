@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 def get_chat_model(settings: Settings, *, streaming: bool = True) -> ChatOpenAI:
     """Build a ChatOpenAI client configured for local llama-server."""
+    api_key = settings.effective_llama_api_key or "not-needed"
     return ChatOpenAI(
         model=settings.model_name,
         openai_api_base=settings.llama_base_url,
-        openai_api_key=settings.llama_api_key,
+        openai_api_key=api_key,
         streaming=streaming,
         temperature=settings.temperature,
         top_p=settings.top_p,
@@ -35,8 +36,9 @@ async def check_llama_health(settings: Settings) -> LlamaHealth:
     server_root = settings.llama_base_url.rstrip("/").removesuffix("/v1")
 
     headers = {}
-    if settings.llama_api_key:
-        headers["Authorization"] = f"Bearer {settings.llama_api_key}"
+    api_key = settings.effective_llama_api_key
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:

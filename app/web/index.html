@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
   <title>Knight - Local AI Assistant</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/theme-bootstrap.js"></script>
@@ -187,7 +187,7 @@
         <span id="scroll-unread-badge" class="scroll-unread-badge hidden"></span>
       </button>
 
-      <!-- Floating Centered Composer Island & Quick Suggestions -->
+      <!-- Floating Centered Composer Island -->
       <div class="composer-island-wrapper" id="composer-island-wrapper">
         <!-- Slash Commands Floating Menu (/) -->
         <div id="slash-commands-menu" class="slash-commands-menu hidden" role="listbox" aria-label="Quick Prompt Commands">
@@ -281,39 +281,6 @@
             </div>
           </div>
         </form>
-
-        <!-- 3 Quick Action Suggestion Cards (visible on Welcome State) -->
-        <div class="quick-suggestion-cards" id="quick-suggestion-cards">
-          <button type="button" class="suggestion-card" data-prompt="Search the web for the latest updates on ">
-            <div class="suggestion-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-            </div>
-            <div class="suggestion-card-text">
-              <span class="suggestion-title">Deep Web Research</span>
-              <span class="suggestion-desc">Search and fetch verified sources</span>
-            </div>
-          </button>
-
-          <button type="button" class="suggestion-card" data-prompt="Please inspect the workspace directory and summarize its structure and key modules.">
-            <div class="suggestion-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-            </div>
-            <div class="suggestion-card-text">
-              <span class="suggestion-title">Code & Workspace</span>
-              <span class="suggestion-desc">Explore codebase and debug files</span>
-            </div>
-          </button>
-
-          <button type="button" class="suggestion-card" id="suggestion-open-ggufbook">
-            <div class="suggestion-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-            </div>
-            <div class="suggestion-card-text">
-              <span class="suggestion-title">GGUFBook Models</span>
-              <span class="suggestion-desc">Explore Hugging Face & hardware fit</span>
-            </div>
-          </button>
-        </div>
       </div>
     </main>
   </div>

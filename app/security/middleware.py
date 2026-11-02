@@ -22,9 +22,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data: https:; "
+            "default-src 'self'; img-src 'self' data:; "
             "connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
         )
+        if "token" in request.query_params or request.url.path in ("/", "/index.html"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 
@@ -59,10 +61,11 @@ class OriginCheckMiddleware(_SettingsMixin, BaseHTTPMiddleware):
         if origin:
             parsed = urlparse(origin)
             allowed_hosts = ("127.0.0.1", "localhost")
+            effective_port = parsed.port or (443 if parsed.scheme == "https" else 80)
             if (
                 parsed.scheme not in ("http", "https")
                 or parsed.hostname not in allowed_hosts
-                or (parsed.port and parsed.port != self.settings.port)
+                or effective_port != self.settings.port
             ):
                 return JSONResponse(
                     status_code=403,
@@ -95,7 +98,15 @@ class AuthTokenMiddleware(_SettingsMixin, BaseHTTPMiddleware):
             )
 
         provided_token = auth_header.removeprefix("Bearer ").strip()
-        if not secrets.compare_digest(provided_token, token):
+        try:
+            is_valid = secrets.compare_digest(
+                provided_token.encode("utf-8"),
+                token.encode("utf-8"),
+            )
+        except (TypeError, UnicodeEncodeError):
+            is_valid = False
+
+        if not is_valid:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authorization token."},

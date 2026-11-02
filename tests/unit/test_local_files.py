@@ -145,8 +145,9 @@ def test_describe_tool_error_accepts_two_arguments():
 
     err = ValueError("Something failed inside tool")
     msg = describe_tool_error(err, DummyRequest())
-    assert "ERROR: test_tool_failure:" in msg
-    assert "Something failed inside tool" in msg
+    assert "ERROR: test_tool_failed:" in msg
+    # KN-12: Raw exception text must never be leaked to the model/UI
+    assert "Something failed inside tool" not in msg
 
 
 def test_read_local_file_with_active_source_collector(tmp_path):

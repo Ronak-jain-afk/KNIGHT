@@ -2,8 +2,10 @@
 import asyncio
 import logging
 import platform
+import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -28,11 +30,28 @@ def _get_gpu_lock() -> asyncio.Lock:
     return _gpu_lock
 
 
+def _parse_int(val: str, default: int = 0) -> int:
+    try:
+        return round(float(val.strip()))
+    except (ValueError, TypeError):
+        return default
+
+
 def _query_gpu_info() -> dict[str, Any]:
     """Blocking nvidia-smi probe, isolated so it can be run in a thread."""
     try:
+        smi_bin = shutil.which("nvidia-smi") or "nvidia-smi"
+        if not shutil.which("nvidia-smi") and platform.system().lower() == "windows":
+            for candidate in (
+                r"C:\Windows\System32\nvidia-smi.exe",
+                r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+            ):
+                if Path(candidate).exists():
+                    smi_bin = candidate
+                    break
+
         cmd = [
-            "nvidia-smi",
+            smi_bin,
             "--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu",
             "--format=csv,noheader,nounits",
         ]
@@ -41,17 +60,19 @@ def _query_gpu_info() -> dict[str, Any]:
             line = res.stdout.strip().split("\n")[0]
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 5:
-                used = int(parts[1])
-                total = int(parts[2])
+                used = _parse_int(parts[1])
+                total = _parse_int(parts[2])
                 pct = round((used / total) * 100, 1) if total > 0 else 0.0
+                util = _parse_int(parts[3])
+                temp = _parse_int(parts[4])
                 return {
                     "available": True,
                     "name": parts[0],
                     "vram_used_mb": used,
                     "vram_total_mb": total,
                     "vram_percent": pct,
-                    "utilization_percent": int(parts[3]),
-                    "temperature_c": int(parts[4]),
+                    "utilization_percent": util,
+                    "temperature_c": temp,
                 }
     except (subprocess.SubprocessError, OSError, ValueError) as exc:
         logger.debug("GPU query failed: %s", exc)
@@ -145,8 +166,9 @@ async def get_hardware_status(settings: Settings) -> dict[str, Any]:
     # Query llama-server ping and active slots
     server_root = settings.llama_base_url.rstrip("/").removesuffix("/v1")
     headers = {}
-    if settings.llama_api_key:
-        headers["Authorization"] = f"Bearer {settings.llama_api_key}"
+    api_key = settings.effective_llama_api_key
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     server_status = {"reachable": False, "latency_ms": None, "slots_busy": 0}
     t0 = time.time()

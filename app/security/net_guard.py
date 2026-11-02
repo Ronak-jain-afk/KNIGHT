@@ -4,7 +4,7 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
-from httpcore import AnyIOBackend, AsyncNetworkBackend
+from httpcore import AnyIOBackend, AsyncNetworkBackend, NetworkBackend, SyncBackend
 
 ALLOWED_SCHEMES = {"http", "https"}
 ALLOWED_PORTS = {80, 443, 8443}
@@ -184,4 +184,57 @@ def pinned_transport(hostname: str, ip: str, **kwargs) -> httpx.AsyncHTTPTranspo
     if pool is None:  # pragma: no cover - defensive against httpx refactors
         raise RuntimeError("httpx transport does not expose a connection pool.")
     pool._network_backend = PinnedNetworkBackend({hostname: ip})
+    return transport
+
+
+class PinnedSyncNetworkBackend(NetworkBackend):
+    """Synchronous network backend that connects to pre-validated IPs for allowed hosts."""
+
+    def __init__(
+        self,
+        pinned: dict[str, str],
+        backend: NetworkBackend | None = None,
+    ) -> None:
+        self._pinned = {host.lower(): ip for host, ip in pinned.items()}
+        self._backend = backend or SyncBackend()
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: list[tuple[int, int, int | bytes]] | None = None,
+    ):
+        target = self._pinned.get(host.lower(), host)
+        return self._backend.connect_tcp(
+            target,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+    def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: list[tuple[int, int, int | bytes]] | None = None,
+    ):
+        return self._backend.connect_unix_socket(
+            path, timeout=timeout, socket_options=socket_options
+        )
+
+    def sleep(self, seconds: float) -> None:
+        self._backend.sleep(seconds)
+
+
+def pinned_sync_transport(hostname: str, ip: str, **kwargs) -> httpx.HTTPTransport:
+    """Build a synchronous httpx transport that only ever connects to ``ip`` for ``hostname``."""
+    kwargs.setdefault("trust_env", False)
+    transport = httpx.HTTPTransport(**kwargs)
+    pool = getattr(transport, "_pool", None)
+    if pool is None:  # pragma: no cover - defensive against httpx refactors
+        raise RuntimeError("httpx transport does not expose a connection pool.")
+    pool._network_backend = PinnedSyncNetworkBackend({hostname: ip})
     return transport

@@ -177,6 +177,17 @@ class Settings(BaseSettings):
         return self.data_dir / "llama_api_key"
 
     @property
+    def effective_llama_api_key(self) -> str:
+        """Return the explicit llama API key, falling back to llama_api_key_file if present."""
+        key = self.llama_api_key.strip()
+        if key:
+            return key
+        try:
+            return self.llama_api_key_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    @property
     def logs_dir(self) -> Path:
         return self.data_dir / "logs"
 

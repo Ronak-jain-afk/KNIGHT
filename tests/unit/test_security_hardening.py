@@ -69,6 +69,13 @@ async def test_origin_check_blocks_disallowed_origin():
         assert resp_bad.status_code == 403
         assert "forbidden" in resp_bad.json()["detail"].lower()
 
+        # Port-less loopback origin (e.g. port 80/443 default) must be rejected when port is 8000 (KN-19)
+        resp_portless = await client.get(
+            "/api/health",
+            headers={"Origin": "http://127.0.0.1"},
+        )
+        assert resp_portless.status_code == 403
+
         # Same origin allowed
         resp_ok = await client.get(
             "/api/health",
@@ -103,6 +110,13 @@ async def test_auth_token_middleware():
             headers={"Authorization": "Bearer wrong-token"},
         )
         assert resp_wrong.status_code == 401
+
+        # 4b. Protected endpoint with non-ASCII token -> 401 (KN-18)
+        resp_non_ascii = await client.get(
+            "/api/data",
+            headers={"Authorization": b"Bearer token-\xff"},
+        )
+        assert resp_non_ascii.status_code == 401
 
         # 5. Protected endpoint with correct token -> 200
         resp_correct = await client.get(

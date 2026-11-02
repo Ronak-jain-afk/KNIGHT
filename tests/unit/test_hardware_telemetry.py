@@ -71,3 +71,23 @@ async def test_concurrent_gpu_detection_runs_once(monkeypatch):
 
     assert calls == 1
     assert all(result == {"available": True, "name": "Fake GPU"} for result in results)
+
+
+def test_query_gpu_info_parses_decimal_temperature_and_utilization(monkeypatch):
+    """Modern nvidia-smi / WSL drivers report decimal temperatures (e.g. 43.60)."""
+    import subprocess
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = "NVIDIA GeForce RTX 4050 Laptop GPU, 512, 6141, 15.0, 43.60\n"
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+
+    res = hardware._query_gpu_info()
+    assert res["available"] is True
+    assert res["name"] == "NVIDIA GeForce RTX 4050 Laptop GPU"
+    assert res["vram_used_mb"] == 512
+    assert res["vram_total_mb"] == 6141
+    assert res["utilization_percent"] == 15
+    assert res["temperature_c"] == 44
+

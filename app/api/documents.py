@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ class DocumentItem(BaseModel):
 class CreateDocumentRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     content: str = Field(..., max_length=2_000_000)
+    overwrite: bool = False
 
 
 def sanitize_filename(name: str) -> str:
@@ -65,16 +67,17 @@ async def read_capped_body(request: Request, max_bytes: int) -> bytes | None:
     return b"".join(chunks)
 
 
-@router.get("", response_model=list[DocumentItem])
-async def list_documents(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> list[DocumentItem]:
-    docs_dir = settings.documents_dir
-    docs_dir.mkdir(parents=True, exist_ok=True)
-
+def _scan_documents(docs_dir: Path) -> list[DocumentItem]:
     items: list[DocumentItem] = []
-    for p in sorted(docs_dir.iterdir()):
-        if p.is_file() and not p.name.startswith("."):
+    try:
+        entries = sorted(docs_dir.iterdir())
+    except OSError:
+        return []
+
+    for p in entries:
+        try:
+            if not p.is_file() or p.name.startswith("."):
+                continue
             stat = p.stat()
             mod_iso = datetime.fromtimestamp(stat.st_mtime, UTC).isoformat()
             try:
@@ -90,7 +93,18 @@ async def list_documents(
                     extension=p.suffix.lower(),
                 )
             )
+        except OSError:
+            continue
     return items
+
+
+@router.get("", response_model=list[DocumentItem])
+async def list_documents(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> list[DocumentItem]:
+    docs_dir = settings.documents_dir
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    return await asyncio.to_thread(_scan_documents, docs_dir)
 
 
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -109,7 +123,13 @@ async def create_document(
             detail="Invalid filename path traversal attempt.",
         )
 
-    target.write_text(req.content, encoding="utf-8")
+    if target.exists() and not req.overwrite:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Document '{safe_name}' already exists.",
+        )
+
+    await asyncio.to_thread(target.write_text, req.content, encoding="utf-8")
     return {
         "status": "created",
         "name": safe_name,
@@ -124,6 +144,7 @@ async def upload_document_raw(
     settings: Annotated[Settings, Depends(get_settings)],
     filename: str | None = Query(default=None),
     x_filename: str | None = Header(default=None, alias="X-Filename"),
+    overwrite: bool = Query(default=False),
 ) -> dict:
     name_param = filename or x_filename or "uploaded_file.txt"
     safe_name = sanitize_filename(name_param)
@@ -148,7 +169,13 @@ async def upload_document_raw(
             detail="Invalid filename path traversal attempt.",
         )
 
-    target.write_bytes(body)
+    if target.exists() and not overwrite:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Document '{safe_name}' already exists.",
+        )
+
+    await asyncio.to_thread(target.write_bytes, body)
     return {
         "status": "uploaded",
         "name": safe_name,

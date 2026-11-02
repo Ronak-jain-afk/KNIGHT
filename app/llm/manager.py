@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
 import logging
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -21,6 +22,16 @@ logger = logging.getLogger(__name__)
 
 # How long a model swap waits for in-flight streaming runs to finish.
 DRAIN_TIMEOUT_SECONDS = 60.0
+
+
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Check if a TCP port is currently occupied."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            return s.connect_ex((host, port)) == 0
+    except OSError:
+        return False
 
 
 def list_gguf_models(settings: Settings, active_model: str | None = None) -> list[dict[str, Any]]:
@@ -171,11 +182,31 @@ class ModelManager:
                     "detail": "A response is still being generated. Try again in a moment.",
                 }
 
-            # 2. Stop only the child process this manager started.
+            server_root = settings.llama_base_url.rstrip("/").removesuffix("/v1")
+            port = int(server_root.rsplit(":", 1)[-1].split("/")[0])
+
+            # 2. Check process ownership and port occupancy (KN-02)
+            if cls._active_server_proc is None and is_port_in_use(port):
+                logger.info("Refusing to hot-swap: llama-server on port %d is managed externally", port)
+                return {
+                    "ok": False,
+                    "error": "model_swap_unsupported",
+                    "detail": "Inference server is externally managed (e.g. via scripts/run_all.py). Restart the runner with the target model to switch.",
+                }
+
+            # Stop the child process this manager started, if any.
             proc = cls._active_server_proc
             cls._active_server_proc = None
-            await asyncio.to_thread(terminate_process_tree, proc, 10.0)
-            await asyncio.sleep(0.5)
+            if proc is not None:
+                await asyncio.to_thread(terminate_process_tree, proc, 10.0)
+                await asyncio.sleep(0.5)
+
+            if is_port_in_use(port):
+                return {
+                    "ok": False,
+                    "error": "port_in_use",
+                    "detail": f"Port {port} is still in use by another process.",
+                }
 
             # 3. Spawn a new llama-server using the canonical argv.
             try:
@@ -183,14 +214,7 @@ class ModelManager:
             except FileNotFoundError as exc:
                 return {"ok": False, "error": "llama_binary_not_found", "detail": str(exc)}
 
-            server_root = settings.llama_base_url.rstrip("/").removesuffix("/v1")
-            port = int(server_root.rsplit(":", 1)[-1].split("/")[0])
-            api_key = settings.llama_api_key.strip()
-            if not api_key:
-                try:
-                    api_key = settings.llama_api_key_file.read_text(encoding="utf-8").strip()
-                except OSError:
-                    api_key = ""
+            api_key = settings.effective_llama_api_key
 
             try:
                 argv = build_llama_argv(
@@ -219,14 +243,14 @@ class ModelManager:
             # 4. Wait for the new server to be ready.
             ready = await wait_for_server_health(
                 server_root,
-                settings.llama_api_key,
+                api_key,
                 timeout=90,
                 proc=cls._active_server_proc,
             )
 
             if not ready:
                 logger.error("Failed to start llama-server with model %s", model_filename)
-                terminate_process_tree(cls._active_server_proc, 5.0)
+                await asyncio.to_thread(terminate_process_tree, cls._active_server_proc, 5.0)
                 cls._active_server_proc = None
                 return {
                     "ok": False,

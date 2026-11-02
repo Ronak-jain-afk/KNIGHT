@@ -11,12 +11,12 @@ current_sources: contextvars.ContextVar["SourceCollector | None"] = contextvars.
 def normalize_url(url: str) -> str:
     """Normalize URL by stripping fragments, utm/tracking parameters, and trailing slash."""
     parsed = urlparse(url.strip())
-    # Strip tracking queries
-    tracking_prefixes = ("utm_", "fbclid", "gclid", "ref", "source")
+    # Strip tracking queries (exact matching for ref/source/click IDs, prefix for utm_*)
+    tracking_exact = {"ref", "source", "fbclid", "gclid", "mc_cid", "mc_eid"}
     query_params = [
         (k, v)
         for k, v in parse_qsl(parsed.query, keep_blank_values=True)
-        if not any(k.lower().startswith(prefix) for prefix in tracking_prefixes)
+        if not (k.lower().startswith("utm_") or k.lower() in tracking_exact)
     ]
     clean_query = urlencode(query_params)
     clean_path = parsed.path.rstrip("/") if parsed.path != "/" else "/"

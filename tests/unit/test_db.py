@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
+
 import aiosqlite
 import pytest
 
@@ -300,3 +302,25 @@ async def test_profiles_crud(tmp_path):
     deleted = await profiles.delete_profile(db_path, "custom-test")
     assert deleted is True
     assert await profiles.get_profile(db_path, "custom-test") is None
+
+
+@pytest.mark.asyncio
+async def test_pool_close_wakes_waiters(tmp_path):
+    """KN-09: closing the pool wakes pending acquire() callers with RuntimeError."""
+    from app.db.sqlite import _ConnectionPool
+
+    pool = _ConnectionPool(tmp_path / "test_pool.sqlite", max_size=1)
+    conn1 = await pool.acquire()
+
+    # Second acquire must wait because max_size=1 and conn1 is not released
+    waiter_task = asyncio.create_task(pool.acquire())
+    await asyncio.sleep(0.01)
+    assert not waiter_task.done()
+
+    # Close the pool: pending waiter should be woken with RuntimeError
+    await pool.close()
+    with pytest.raises(RuntimeError, match="Database connection pool is closed"):
+        await waiter_task
+
+    await pool.release(conn1)
+

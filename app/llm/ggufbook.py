@@ -14,7 +14,12 @@ import httpx
 
 from app.config import Settings
 from app.llm.hardware import get_gpu_telemetry, get_ram_telemetry
-from app.security.net_guard import BlockedAddressError, InvalidURLError, NetGuard
+from app.security.net_guard import (
+    BlockedAddressError,
+    InvalidURLError,
+    NetGuard,
+    PinnedSyncNetworkBackend,
+)
 from app.tools.local_files import format_size
 
 logger = logging.getLogger(__name__)
@@ -358,11 +363,16 @@ def validate_download_url(url: str, settings: Settings, *, resolve: bool = True)
 def _open_validated_stream(
     client: httpx.Client, url: str, settings: Settings
 ) -> httpx.Response:
-    """Open a stream, validating every redirect hop instead of following blindly."""
+    """Open a stream, validating every redirect hop and pinning DNS to prevent TOCTOU SSRF."""
     current = url
     for _ in range(MAX_REDIRECTS + 1):
-        validate_download_url(current, settings)
-        request = client.build_request("GET", current)
+        clean_url = validate_download_url(current, settings)
+        hostname, _port, pinned_ip = NetGuard.resolve_url(clean_url)
+        pool = getattr(client._transport, "_pool", None)
+        if pool is not None:
+            pool._network_backend = PinnedSyncNetworkBackend({hostname: pinned_ip})
+
+        request = client.build_request("GET", clean_url)
         response = client.send(request, stream=True)
 
         if response.is_redirect:
@@ -370,7 +380,7 @@ def _open_validated_stream(
             response.close()
             if not location:
                 raise DownloadURLError("Redirect response is missing a Location header.")
-            current = urljoin(current, location)
+            current = urljoin(clean_url, location)
             continue
         return response
 
@@ -464,6 +474,7 @@ def _sync_download_worker(task: DownloadTask, settings: Settings) -> None:
         with httpx.Client(
             timeout=httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=60.0),
             follow_redirects=False,
+            trust_env=False,
         ) as client:
             response = _open_validated_stream(client, task.url, settings)
             try:
@@ -519,7 +530,17 @@ def _sync_download_worker(task: DownloadTask, settings: Settings) -> None:
                 response.close()
 
         _verify_gguf(part_path)
+        if task.status == "cancelled":
+            raise _Cancelled()
+
         os.replace(part_path, target_path)
+
+        if task.status == "cancelled":
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise _Cancelled()
 
         task.status = "completed"
         task.eta_seconds = 0
@@ -588,6 +609,16 @@ class DownloadManager:
                 ):
                     return t
 
+            # Bound task registry: evict older terminal tasks when size exceeds 50
+            if len(cls._tasks) >= 50:
+                terminal_ids = [
+                    tid for tid, t in cls._tasks.items()
+                    if t.status in ("completed", "failed", "cancelled")
+                ]
+                terminal_ids.sort(key=lambda tid: cls._tasks[tid].created_at)
+                for tid in terminal_ids[: len(cls._tasks) - 49]:
+                    cls._tasks.pop(tid, None)
+
             clean_url = validate_download_url(download_url, settings)
 
             task_id = f"dl_{uuid.uuid4().hex[:8]}"
@@ -618,13 +649,5 @@ class DownloadManager:
             task.status = "cancelled"
             if task._async_task and not task._async_task.done():
                 task._async_task.cancel()
-
-            # Clean up partial file
-            part_path = settings.models_dir / f"{task.filename}.part"
-            if part_path.exists():
-                try:
-                    part_path.unlink()
-                except OSError:
-                    pass
             return True
         return False

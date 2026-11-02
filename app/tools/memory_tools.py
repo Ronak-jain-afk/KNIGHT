@@ -43,6 +43,11 @@ def remember(
         "Saved." | "Already known." | "Skipped: looks like a secret."
     """
     try:
+        importance = max(1, min(5, int(importance)))
+    except (ValueError, TypeError):
+        return "ERROR: invalid_argument: importance must be an integer between 1 and 5."
+
+    try:
         return run_async(_remember_async(text, kind, importance))
     except (RuntimeError, TimeoutError, OSError, ValueError) as exc:
         return f"ERROR: remember_failed: {exc}"
@@ -59,6 +64,11 @@ def recall(query: str, k: int = 5) -> str:
     Returns:
         JSON: {"memories":[{"text":...,"kind":...,"score":0.82}]} or {"memories":[]}
     """
+    try:
+        k = max(1, min(10, int(k)))
+    except (ValueError, TypeError):
+        return "ERROR: invalid_argument: k must be an integer between 1 and 10."
+
     try:
         return run_async(_recall_async(query, k))
     except (RuntimeError, TimeoutError, OSError, ValueError) as exc:

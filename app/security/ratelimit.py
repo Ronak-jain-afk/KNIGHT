@@ -21,12 +21,12 @@ class TokenBucket:
         self.rate = rate_per_minute / 60.0  # tokens per second
         self.capacity = capacity or rate_per_minute
         self.tokens = self.capacity
-        self.last_update = time.time()
+        self.last_update = time.monotonic()
         self._lock = threading.Lock()
 
     async def acquire(self) -> bool:
         with self._lock:
-            now = time.time()
+            now = time.monotonic()
             elapsed = now - self.last_update
             self.last_update = now
             self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)

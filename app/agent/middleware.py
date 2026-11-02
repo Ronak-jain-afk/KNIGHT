@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import contextvars
 import json
+import logging
 import math
 from collections.abc import Callable, Iterable
 from typing import Any
@@ -20,6 +21,8 @@ from app.agent.run_context import (
     resolve_system_prompt_override,
 )
 from app.tools.registry import CHAT_MODE_TOOLS
+
+logger = logging.getLogger(__name__)
 
 # Per-turn loop guard tracking context variable
 loop_guard_state: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
@@ -43,7 +46,7 @@ def approx_token_counter(messages: Iterable[Any]) -> int:
 
 
 def describe_tool_error(error: Exception, *args: Any, **kwargs: Any) -> str:
-    """Convert unexpected tool exceptions into clean error ToolMessages."""
+    """Convert unexpected tool exceptions into clean error ToolMessages (plan §12, KN-12)."""
     tool_name = "tool"
     if args:
         request = args[0]
@@ -51,7 +54,8 @@ def describe_tool_error(error: Exception, *args: Any, **kwargs: Any) -> str:
             tool_name = getattr(request.tool, "name", "tool")
         elif hasattr(request, "tool_call") and isinstance(request.tool_call, dict):
             tool_name = request.tool_call.get("name", "tool")
-    return f"ERROR: {tool_name}_failure: {error}"
+    logger.warning("Tool execution error in %s: %s", tool_name, error)
+    return f"ERROR: {tool_name}_failed: An unexpected error occurred while executing {tool_name}."
 
 
 class ModelCustomizationMiddleware(AgentMiddleware):

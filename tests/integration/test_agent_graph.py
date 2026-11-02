@@ -142,6 +142,8 @@ async def test_agent_graph_chat_mode_policy(agent_settings):
 
     assert "web_search" not in capturing_model.captured_tools
     assert "fetch_page" not in capturing_model.captured_tools
+    assert "read_local_file" not in capturing_model.captured_tools
+    assert "list_directory" not in capturing_model.captured_tools
     assert "calculate" in capturing_model.captured_tools
 
 

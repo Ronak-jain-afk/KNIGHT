@@ -1267,12 +1267,8 @@ function getConversationGroup(isoDateStr) {
 function updateWelcomeHeroVisibility() {
   const hasMessages = messagesContainer && messagesContainer.children.length > 0;
   const welcomeHero = document.getElementById("welcome-hero");
-  const quickCards = document.getElementById("quick-suggestion-cards");
   if (welcomeHero) {
     welcomeHero.classList.toggle("hidden", hasMessages);
-  }
-  if (quickCards) {
-    quickCards.classList.toggle("hidden", hasMessages);
   }
 }
 
@@ -1923,13 +1919,38 @@ function sanitizeAndRenderMarkdown(rawMarkdown, sources = []) {
     });
   }
 
-  // 3. Sanitize HTML strictly with DOMPurify as the final step
-  if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
-    html = window.DOMPurify.sanitize(html, {
-      USE_PROFILES: { html: true },
-      ADD_TAGS: ["details", "summary"],
-      ADD_ATTR: ["target", "rel", "class", "title", "open", "data-idx", "data-domain", "data-title", "data-snippet"],
+  // 3. Sanitize HTML strictly with DOMPurify as the final step (Fail closed: KN-04)
+  if (!window.DOMPurify || typeof window.DOMPurify.sanitize !== "function") {
+    // If DOMPurify is missing or failed to load, fail closed by escaping all markup
+    return `<p class="sanitizer-fallback">${escapeHTML(rawMarkdown)}</p>`;
+  }
+
+  html = window.DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ADD_TAGS: ["details", "summary"],
+    ADD_ATTR: ["target", "rel", "class", "title", "open", "data-idx", "data-domain", "data-title", "data-snippet"],
+  });
+
+  // 4. Convert or remove remote images to prevent tracking pixels and data exfiltration (KN-03)
+  if (typeof document !== "undefined" && html.includes("<img")) {
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = html;
+    const images = tempDiv.querySelectorAll("img");
+    images.forEach((img) => {
+      const src = img.getAttribute("src") || "";
+      // Only allow local relative paths or data: URIs; convert remote URLs to safe links
+      if (!src.startsWith("data:") && !src.startsWith("/") && !src.startsWith("./")) {
+        const alt = img.getAttribute("alt") || "Image";
+        const link = document.createElement("a");
+        link.href = encodeURI(src);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "citation-link";
+        link.textContent = `[Image: ${alt}]`;
+        img.parentNode.replaceChild(link, img);
+      }
     });
+    html = tempDiv.innerHTML;
   }
 
   return html;
@@ -2334,6 +2355,58 @@ async function sendMessage(text) {
   const streamElements = createStreamingAssistantBubble();
   let accumulatedText = "";
 
+  let renderFrameId = null;
+  let lastRenderTime = 0;
+
+  function renderLiveMarkdown() {
+    if (renderFrameId) {
+      if (typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(renderFrameId);
+      } else {
+        clearTimeout(renderFrameId);
+      }
+      renderFrameId = null;
+    }
+    lastRenderTime = performance.now();
+    const existingThink = streamElements.liveContent.querySelector(".thinking-block");
+    const wasOpen = existingThink ? existingThink.open : null;
+
+    streamElements.liveContent.innerHTML = sanitizeAndRenderMarkdown(
+      accumulatedText,
+      currentSources
+    );
+
+    if (wasOpen !== null) {
+      const newThink = streamElements.liveContent.querySelector(".thinking-block");
+      if (newThink) newThink.open = wasOpen;
+    }
+
+    if (autoScroll) {
+      scrollToBottom(false);
+    } else {
+      notifyUnreadUpdate();
+    }
+  }
+
+  function scheduleLiveRender() {
+    const now = performance.now();
+    if (now - lastRenderTime > 50) {
+      renderLiveMarkdown();
+    } else if (!renderFrameId) {
+      if (typeof requestAnimationFrame === "function") {
+        renderFrameId = requestAnimationFrame(() => {
+          renderFrameId = null;
+          renderLiveMarkdown();
+        });
+      } else {
+        renderFrameId = setTimeout(() => {
+          renderFrameId = null;
+          renderLiveMarkdown();
+        }, 50);
+      }
+    }
+  }
+
   const customInstructions = localStorage.getItem("knight-custom-instructions") || "";
 
   try {
@@ -2413,26 +2486,7 @@ async function sendMessage(text) {
             firstTokenTime = performance.now();
           }
           accumulatedText += data.text || "";
-
-          // Preserve user-toggled open/close state on thinking accordion if present
-          const existingThink = streamElements.liveContent.querySelector(".thinking-block");
-          const wasOpen = existingThink ? existingThink.open : null;
-
-          streamElements.liveContent.innerHTML = sanitizeAndRenderMarkdown(
-            accumulatedText,
-            currentSources
-          );
-
-          if (wasOpen !== null) {
-            const newThink = streamElements.liveContent.querySelector(".thinking-block");
-            if (newThink) newThink.open = wasOpen;
-          }
-
-          if (autoScroll) {
-            scrollToBottom(false);
-          } else {
-            notifyUnreadUpdate();
-          }
+          scheduleLiveRender();
         } else if (eventType === "tool_start") {
           renderToolStart(streamElements.toolChipsContainer, data);
           if (autoScroll) {
@@ -2445,6 +2499,11 @@ async function sendMessage(text) {
         } else if (eventType === "sources") {
           currentSources = data.items || [];
         } else if (eventType === "done") {
+          if (renderFrameId) {
+            if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(renderFrameId);
+            else clearTimeout(renderFrameId);
+            renderFrameId = null;
+          }
           // Finalise assistant message
           streamElements.cursor.remove();
           streamElements.liveContent.innerHTML = sanitizeAndRenderMarkdown(
@@ -2516,6 +2575,11 @@ async function sendMessage(text) {
       renderInlineError(streamElements.bubble, err.message, text);
     }
   } finally {
+    if (renderFrameId) {
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(renderFrameId);
+      else clearTimeout(renderFrameId);
+      renderFrameId = null;
+    }
     setStreamingState(false);
     currentAbortController = null;
   }
@@ -4418,25 +4482,6 @@ if (sidebarRigCard) {
   sidebarRigCard.addEventListener("click", () => {
     fetchHardwareTelemetry();
     if (hardwareDialog) hardwareDialog.showModal();
-  });
-}
-
-// Quick action suggestion cards on Welcome Hero
-for (const card of document.querySelectorAll(".suggestion-card[data-prompt]")) {
-  card.addEventListener("click", () => {
-    const prompt = card.dataset.prompt;
-    if (prompt && messageInput) {
-      messageInput.value = prompt;
-      messageInput.focus();
-      autoResizeTextarea();
-    }
-  });
-}
-
-const suggestionGgufbook = document.getElementById("suggestion-open-ggufbook");
-if (suggestionGgufbook) {
-  suggestionGgufbook.addEventListener("click", () => {
-    openGGUFBook();
   });
 }
 

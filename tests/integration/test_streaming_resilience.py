@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import Field
@@ -265,6 +265,11 @@ async def test_per_turn_context_does_not_leak_into_next_turn(stream_settings):
     assert "SECRET-PERSONA" not in turn_two
     assert "USER LIKES TEA" not in turn_two
 
+    # KN-21: Context variables are reset after the turn finishes
+    from app.logging_setup import current_run_id, current_thread_id
+    assert current_run_id.get() == ""
+    assert current_thread_id.get() == ""
+
 
 @pytest.mark.asyncio
 async def test_background_tasks_are_referenced_and_drained():
@@ -322,3 +327,89 @@ async def test_v2_events_and_real_token_usage(stream_settings):
     assert row["status"] == "ok"
     assert row["prompt_tokens"] == 11
     assert row["completion_tokens"] == 7
+
+
+@pytest.mark.asyncio
+async def test_client_disconnect_closes_underlying_astream(stream_settings):
+    """KN-06: client disconnect deterministically closes the LangGraph astream generator."""
+    closed = False
+
+    class ClosableAgent:
+        async def astream(self, *args, **kwargs):
+            nonlocal closed
+            try:
+                for idx in range(100):
+                    yield "messages", (AIMessageChunk(content=f"word{idx} "), {"langgraph_node": "model"})
+            finally:
+                closed = True
+
+    class FakeRequest:
+        def __init__(self):
+            self.calls = 0
+
+        async def is_disconnected(self):
+            self.calls += 1
+            return self.calls > 2
+
+    generator = stream_agent_run(
+        ClosableAgent(),
+        stream_settings,
+        "thread-aclose",
+        "run-aclose",
+        "hello",
+        http_request=FakeRequest(),
+    )
+
+    async for _ in generator:
+        pass
+
+    assert closed is True
+
+
+@pytest.mark.asyncio
+async def test_runs_records_tool_calls_count(stream_settings):
+    """KN-20: tool_start increments tool_calls count and finish_run persists it."""
+    class ToolAgent:
+        async def astream(self, *args, **kwargs):
+            yield (
+                "updates",
+                {
+                    "model": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                id="msg-tc",
+                                tool_calls=[
+                                    {"id": "c1", "name": "calculate", "args": {"expression": "2+2"}}
+                                ],
+                            )
+                        ]
+                    }
+                },
+            )
+            yield (
+                "updates",
+                {
+                    "tools": {
+                        "messages": [
+                            ToolMessage(content="4", tool_call_id="c1", name="calculate")
+                        ]
+                    }
+                },
+            )
+            yield ("messages", (AIMessageChunk(content="4"), {"langgraph_node": "model"}))
+
+    generator = stream_agent_run(
+        ToolAgent(),
+        stream_settings,
+        "thread-tc",
+        "run-tc-1",
+        "calc 2+2",
+    )
+    async for _ in generator:
+        pass
+
+    row = await runs.get_run(stream_settings.app_db_path, "run-tc-1")
+    assert row is not None
+    assert row["tool_calls"] == 1
+

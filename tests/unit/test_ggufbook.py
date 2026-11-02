@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+import pytest
+
 from app.llm.ggufbook import evaluate_hardware_fit, extract_quant_type
 
 
@@ -112,3 +114,33 @@ def test_dead_code_functions_removed():
     assert not hasattr(db_memories, "get_memory_by_hash")  # D-05
     assert not hasattr(db_memories, "record_memory_usage")  # D-06
     assert not hasattr(db_runs, "list_runs")  # D-07
+
+
+@pytest.mark.asyncio
+async def test_download_manager_bounds_task_registry(tmp_path, monkeypatch):
+    """KN-11: task registry evicts older terminal tasks when size reaches limit."""
+    from app.config import Settings
+    from app.llm.ggufbook import DownloadManager, DownloadTask
+
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.ensure_dirs()
+
+    # Pre-populate registry with 50 completed tasks
+    DownloadManager._tasks.clear()
+    for i in range(50):
+        t = DownloadTask(f"t_{i}", "repo/model", f"model_{i}.gguf", "https://huggingface.co/m.gguf", 100)
+        t.status = "completed"
+        t.created_at = f"2026-10-31T00:00:{i:02d}Z"
+        DownloadManager._tasks[t.id] = t
+
+    monkeypatch.setattr("app.llm.ggufbook._sync_download_worker", lambda task, s: None)
+    monkeypatch.setattr("app.llm.ggufbook.validate_download_url", lambda url, s: url)
+
+    # Starting a 51st download should evict the oldest completed task (t_0)
+    new_task = await DownloadManager.start_download(
+        "repo/model", "new_model.gguf", "https://huggingface.co/new.gguf", 100, settings
+    )
+    assert len(DownloadManager._tasks) <= 50
+    assert "t_0" not in DownloadManager._tasks
+    assert new_task.id in DownloadManager._tasks
+

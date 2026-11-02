@@ -63,6 +63,8 @@ async def test_web_ui_serves_html():
         # 2. Security headers (CSP, etc.) and stylesheet
         assert "Content-Security-Policy" in resp.headers
         assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+        assert "img-src 'self' data:;" in resp.headers["Content-Security-Policy"]
+        assert "https:" not in resp.headers["Content-Security-Policy"].split("img-src")[1].split(";")[0]
 
         # 2b. Favicon endpoints (/favicon.svg and /favicon.ico)
         resp_svg = await client.get("/favicon.svg")
@@ -112,6 +114,8 @@ async def test_web_ui_serves_html():
         assert "clearAllMemories" in resp_js.text
         assert "updateSettingsMemoryCount" in resp_js.text
         assert "extractThinkingBlocks" in resp_js.text
+        assert "sanitizer-fallback" in resp_js.text
+        assert "prevent tracking pixels" in resp_js.text
         assert "citationTooltip" in resp_js.text
         assert "updateScrollButtonVisibility" in resp_js.text
         assert 'String(val ?? "")' in resp_js.text

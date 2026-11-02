@@ -104,7 +104,8 @@ def fetch_page(url: str, max_chars: int = 6000) -> str:
     try:
         return run_async(_fetch_page_async(url, max_chars))
     except (RuntimeError, TimeoutError, OSError, ValueError) as exc:
-        return f"ERROR: fetch_failed: {exc}"
+        logger.warning("Fetch failed for %s: %s", url, exc)
+        return "ERROR: fetch_failed: Unable to fetch page content"
 
 
 async def _fetch_page_async(url: str, max_chars: int = 6000) -> str:
@@ -225,6 +226,7 @@ async def _fetch_page_async(url: str, max_chars: int = 6000) -> str:
         except httpx.TimeoutException:
             return f"ERROR: fetch_timeout: request exceeded {settings.fetch_timeout_seconds}s"
         except httpx.HTTPError as exc:
-            return f"ERROR: http_error: {exc}"
+            logger.warning("HTTP error fetching %s: %s", url, exc)
+            return "ERROR: http_error: HTTP request failed"
 
     return "ERROR: too_many_redirects: exceeded 3 hops"

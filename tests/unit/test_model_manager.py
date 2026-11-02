@@ -191,3 +191,69 @@ async def test_switch_refuses_while_inference_is_active(tmp_path, monkeypatch):
     assert result["ok"] is False
     assert result["error"] == "model_swapping"
     assert inference_gate.active == baseline
+
+
+@pytest.mark.asyncio
+async def test_switch_refuses_when_port_in_use_externally(tmp_path, monkeypatch):
+    """KN-02: external server occupying port returns model_swap_unsupported without doomed spawn."""
+    settings = make_settings(tmp_path)
+    (settings.models_dir / "target.gguf").write_bytes(b"GGUF")
+
+    # Mock port in use
+    monkeypatch.setattr(manager_module, "is_port_in_use", lambda port, host="127.0.0.1": True)
+    ModelManager._active_server_proc = None
+
+    result = await ModelManager.switch_model(
+        settings,
+        "target.gguf",
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "model_swap_unsupported"
+    assert "externally managed" in result["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_switch_refuses_when_port_occupied_after_termination(tmp_path, monkeypatch):
+    """KN-02: occupied port after terminating process returns port_in_use."""
+    settings = make_settings(tmp_path)
+    (settings.models_dir / "target.gguf").write_bytes(b"GGUF")
+
+    class FakeProc:
+        def poll(self):
+            return 0
+
+    ModelManager._active_server_proc = FakeProc()
+    monkeypatch.setattr(manager_module, "terminate_process_tree", lambda *a, **k: None)
+    monkeypatch.setattr(manager_module, "is_port_in_use", lambda port, host="127.0.0.1": True)
+
+    try:
+        result = await ModelManager.switch_model(
+            settings,
+            "target.gguf",
+            SimpleNamespace(state=SimpleNamespace()),
+        )
+    finally:
+        ModelManager._active_server_proc = None
+
+    assert result["ok"] is False
+    assert result["error"] == "port_in_use"
+
+
+def test_effective_llama_api_key(tmp_path):
+    """KN-05: effective_llama_api_key resolves explicit key or keyfile."""
+    settings = Settings(data_dir=tmp_path / "data", llama_api_key="explicit-key")
+    assert settings.effective_llama_api_key == "explicit-key"
+
+    # From keyfile
+    settings_no_key = Settings(data_dir=tmp_path / "data", llama_api_key="")
+    key_file = settings_no_key.llama_api_key_file
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_text("file-secret-key-42", encoding="utf-8")
+
+    assert settings_no_key.effective_llama_api_key == "file-secret-key-42"
+
+    # Missing keyfile
+    key_file.unlink()
+    assert settings_no_key.effective_llama_api_key == ""

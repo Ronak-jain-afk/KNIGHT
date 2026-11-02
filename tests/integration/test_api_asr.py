@@ -205,3 +205,17 @@ async def test_api_asr_internal_error_does_not_leak_exception_text():
     assert body["request_id"]
     assert ".cache/needle" not in resp.text
 
+
+@pytest.mark.asyncio
+async def test_api_asr_oversized_multipart_rejected_early():
+    """KN-07: oversized ASR multipart payload is capped early without unbounded spooling."""
+    oversized_data = b"RIFF" + b"\x00" * (10 * 1024 * 1024 + 100_000)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        files = {"file": ("large.wav", oversized_data, "audio/wav")}
+        resp = await client.post("/api/asr/transcribe", files=files)
+        assert resp.status_code == 413
+        body = resp.json()
+        assert body["error"] == "audio_too_large"
+

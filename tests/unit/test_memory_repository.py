@@ -231,3 +231,35 @@ async def test_text_update_without_embedding_clears_stale_vector(tmp_path):
     assert row["embedding"] is None
     assert row["embedding_model"] is None
 
+
+@pytest.mark.asyncio
+async def test_keyword_fallback_runs_when_vector_cosine_below_min_score(tmp_path):
+    """KN-26: keyword fallback triggers when vector search results are fewer than top_k."""
+    settings = Settings(data_dir=tmp_path)
+    await run_migrations(settings.app_db_path)
+
+    mock_embeddings = MagicMock()
+    mock_embeddings.is_available.return_value = True
+    mock_embeddings.initialize = AsyncMock(return_value=True)
+    # Stored memory has embedding along X-axis
+    mock_embeddings.embed_text = AsyncMock(
+        return_value=np.array([1.0, 0.0, 0.0], dtype="<f4")
+    )
+
+    repo = MemoryRepository(settings, embedding_service=mock_embeddings)
+    await repo.initialize()
+
+    await repo.add_memory("Project codename is Xylophone42.", kind="project", importance=3)
+
+    # Query embedding is orthogonal (along Y-axis), cosine = 0.0 (< min_score 0.35)
+    mock_embeddings.embed_text = AsyncMock(
+        return_value=np.array([0.0, 1.0, 0.0], dtype="<f4")
+    )
+
+    # Keyword match for "Xylophone42" should still succeed via fallback
+    results = await repo.search("Xylophone42")
+    assert len(results) == 1
+    assert "Xylophone42" in results[0]["text"]
+    assert results[0].get("score_kind") == "lexical"
+
+
